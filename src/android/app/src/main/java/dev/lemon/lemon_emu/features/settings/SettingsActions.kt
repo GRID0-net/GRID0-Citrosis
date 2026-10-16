@@ -140,8 +140,8 @@ object SettingsActions {
             .setItems(labels) { dialog, which ->
                 dialog.dismiss()
                 when (which) {
-                    0 -> shareLog(activity, "lemon_log.txt", R.string.share_log, R.string.share_log_missing)
-                    1 -> shareLog(activity, "lemon_gpu.log", R.string.share_gpu_log, R.string.share_gpu_log_missing)
+                    0 -> shareLog(activity, "citrosis_log.txt", R.string.share_log, R.string.share_log_missing)
+                    1 -> shareLog(activity, "citrosis_gpu.log", R.string.share_gpu_log, R.string.share_gpu_log_missing)
                     else -> shareCrashLog(activity)
                 }
             }

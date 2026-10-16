@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 
@@ -21,6 +23,7 @@ enum class Errno : u32 {
     AGAIN = 11,
     INVAL = 22,
     MFILE = 24,
+    AFNOSUPPORT = 97,
     PIPE = 32,
     MSGSIZE = 90,
     CONNABORTED = 103,
@@ -54,6 +57,7 @@ enum class GetAddrInfoError : s32 {
 enum class Domain : u32 {
     Unspecified = 0,
     INET = 2,
+    INET6 = 28, // Guest BSD address family; IPv6 sockets are rejected by BSD_USA.
 };
 
 enum class Type : u32 {
@@ -183,10 +187,17 @@ enum class Protocol : u32 {
 };
 
 enum class SocketLevel : u32 {
-    IP = 0,
-    TCP = 6,
     SOCKET = 0xffff, // i.e. SOL_SOCKET
+    IP = 0,          // i.e. IPPROTO_IP
+    TCP = 6,         // i.e. IPPROTO_TCP
 };
+
+// IPPROTO_TCP-level option names, as the guest sends them.
+constexpr u32 TCP_OPT_NODELAY = 0x1;
+
+// IPPROTO_IP-level option names, BSD numbering as the guest sends them.
+constexpr u32 IP_OPT_TOS = 0x3;
+constexpr u32 IP_OPT_TTL = 0x4;
 
 enum class OptName : u32 {
     REUSEADDR = 0x4,
@@ -221,9 +232,12 @@ struct SockAddrIn {
     u8 family;
     u16 portno;
     std::array<u8, 4> ip;
-    std::array<u8, 248> zeroes;
+    std::array<u8, 8> zeroes;
 };
-static_assert(sizeof(SockAddrIn) == 0x100);
+// sockaddr_in is a wire address, not the capacity of sockaddr_storage.
+static_assert(sizeof(SockAddrIn) == 0x10);
+static_assert(offsetof(SockAddrIn, portno) == 2);
+static_assert(offsetof(SockAddrIn, ip) == 4);
 
 enum class PollEvents : u16 {
     // Using Pascal case because IN is a macro on Windows.

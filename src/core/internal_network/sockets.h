@@ -73,6 +73,13 @@ public:
 
     virtual Errno SetKeepAlive(bool enable) = 0;
 
+    virtual Errno SetNoDelay(bool enable) = 0;
+
+    virtual std::pair<bool, Errno> GetNoDelay() = 0;
+
+    /// IPPROTO_IP options: IP_TOS and IP_TTL. Pia sets a short TTL to punch NAT holes.
+    virtual Errno SetIpOption(IpOption option, int value) = 0;
+
     virtual Errno SetBroadcast(bool enable) = 0;
 
     virtual Errno SetSndBuf(u32 value) = 0;
@@ -144,6 +151,12 @@ public:
 
     Errno SetKeepAlive(bool enable) override;
 
+    Errno SetNoDelay(bool enable) override;
+
+    std::pair<bool, Errno> GetNoDelay() override;
+
+    Errno SetIpOption(IpOption option, int value) override;
+
     Errno SetBroadcast(bool enable) override;
 
     Errno SetSndBuf(u32 value) override;
@@ -172,6 +185,7 @@ public:
 
 private:
     bool is_non_blocking = false;
+    bool is_datagram = false;
 };
 
 std::pair<s32, Errno> Poll(std::vector<PollFD>& poll_fds, s32 timeout);

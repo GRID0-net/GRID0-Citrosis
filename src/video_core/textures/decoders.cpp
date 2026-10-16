@@ -7,12 +7,15 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <span>
 
 #include "common/alignment.h"
 #include "common/assert.h"
 #include "common/bit_util.h"
 #include "common/div_ceil.h"
+#include "video_core/android_performance.h"
+#include "video_core/citrosis_diag.h"
 #include "video_core/gpu.h"
 #include "video_core/textures/decoders.h"
 
@@ -36,9 +39,26 @@ void incrpdep(u32& value) {
     value = ((value | ~mask) + swizzled_incr) & mask;
 }
 
+template <size_t N>
+size_t CopySector(u8* dst, const u8* src, std::optional<VideoCore::Surface::PixelFormat> sanitize) {
+    if (!sanitize) {
+        std::memcpy(dst, src, N);
+        return 0;
+    }
+    // Never read from the mapped Vulkan destination. It can be expensive to read even
+    // though sequential writes are cheap. This temporary is at most sixteen stack bytes.
+    std::array<u8, N> sector;
+    std::memcpy(sector.data(), src, N);
+    const size_t fixed = VideoCommon::CitrosisDiag::ScrubNonFinite(*sanitize, sector);
+    std::memcpy(dst, sector.data(), N);
+    return fixed;
+}
+
 template <bool TO_LINEAR, u32 BYTES_PER_PIXEL>
-void SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u32 height, u32 depth,
-                 u32 block_height, u32 block_depth, u32 stride) {
+size_t SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u32 height,
+                   u32 depth, u32 block_height, u32 block_depth, u32 stride,
+                   std::optional<VideoCore::Surface::PixelFormat> sanitize) {
+    size_t fixed = 0;
     // The origin of the transformation can be configured here, leave it as zero as the current API
     // doesn't expose it.
     static constexpr u32 origin_x = 0;
@@ -57,6 +77,9 @@ void SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u32
     const u32 block_height_mask = (1U << block_height) - 1;
     const u32 block_depth_mask = (1U << block_depth) - 1;
     const u32 x_shift = GOB_SIZE_SHIFT + block_height + block_depth;
+    const bool sector_copy =
+        VideoCommon::AndroidPerformance::Enabled() && 16 % BYTES_PER_PIXEL == 0;
+    static_assert((SWIZZLE_X_BITS & 15U) == 15U);
 
     for (u32 slice = 0; slice < depth; ++slice) {
         const u32 z = slice + origin_z;
@@ -71,7 +94,23 @@ void SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u32
                                  ((block_y & block_height_mask) << GOB_SIZE_SHIFT);
 
             u32 swizzled_x = pdep<SWIZZLE_X_BITS>(origin_x * BYTES_PER_PIXEL);
-            for (u32 column = 0; column < width;
+            u32 column = 0;
+            if (sector_copy) {
+                // Low four X bits are contiguous in a Tegra GOB. Copy a complete
+                // 16-byte sector at once instead of repeating address math per texel.
+                // Tail texels retain the scalar path; no padding bytes are touched.
+                constexpr u32 pixels_per_sector = 16 / BYTES_PER_PIXEL;
+                for (; column + pixels_per_sector <= width;
+                     column += pixels_per_sector, incrpdep<SWIZZLE_X_BITS, 16>(swizzled_x)) {
+                    const u32 x = column * BYTES_PER_PIXEL;
+                    const u32 offset_x = (x >> GOB_SIZE_X_SHIFT) << x_shift;
+                    const u32 tiled = offset_z + offset_y + offset_x + (swizzled_x | swizzled_y);
+                    const u32 linear = slice * pitch * height + line * pitch + x;
+                    fixed += CopySector<16>(&output[TO_LINEAR ? tiled : linear],
+                                            &input[TO_LINEAR ? linear : tiled], sanitize);
+                }
+            }
+            for (; column < width;
                  ++column, incrpdep<SWIZZLE_X_BITS, BYTES_PER_PIXEL>(swizzled_x)) {
                 const u32 x = (column + origin_x) * BYTES_PER_PIXEL;
                 const u32 offset_x = (x >> GOB_SIZE_X_SHIFT) << x_shift;
@@ -85,10 +124,11 @@ void SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u32
                 u8* const dst = &output[TO_LINEAR ? swizzled_offset : unswizzled_offset];
                 const u8* const src = &input[TO_LINEAR ? unswizzled_offset : swizzled_offset];
 
-                std::memcpy(dst, src, BYTES_PER_PIXEL);
+                fixed += CopySector<BYTES_PER_PIXEL>(dst, src, sanitize);
             }
         }
     }
+    return fixed;
 }
 
 template <bool TO_LINEAR, u32 BYTES_PER_PIXEL>
@@ -155,13 +195,14 @@ void SwizzleSubrectImpl(std::span<u8> output, std::span<const u8> input, u32 wid
 }
 
 template <bool TO_LINEAR>
-void Swizzle(std::span<u8> output, std::span<const u8> input, u32 bytes_per_pixel, u32 width,
-             u32 height, u32 depth, u32 block_height, u32 block_depth, u32 stride_alignment) {
+size_t Swizzle(std::span<u8> output, std::span<const u8> input, u32 bytes_per_pixel, u32 width,
+               u32 height, u32 depth, u32 block_height, u32 block_depth, u32 stride_alignment,
+               std::optional<VideoCore::Surface::PixelFormat> sanitize = std::nullopt) {
     switch (bytes_per_pixel) {
 #define BPP_CASE(x)                                                                                \
     case x:                                                                                        \
         return SwizzleImpl<TO_LINEAR, x>(output, input, width, height, depth, block_height,        \
-                                         block_depth, stride_alignment);
+                                         block_depth, stride_alignment, sanitize);
         BPP_CASE(1)
         BPP_CASE(2)
         BPP_CASE(3)
@@ -173,7 +214,7 @@ void Swizzle(std::span<u8> output, std::span<const u8> input, u32 bytes_per_pixe
 #undef BPP_CASE
     default:
         ASSERT_MSG(false, "Invalid bytes_per_pixel={}", bytes_per_pixel);
-        break;
+        return 0;
     }
 }
 
@@ -188,6 +229,18 @@ void UnswizzleTexture(std::span<u8> output, std::span<const u8> input, u32 bytes
     bytes_per_pixel = 1U << new_bpp;
     Swizzle<false>(output, input, bytes_per_pixel, width, height, depth, block_height, block_depth,
                    stride);
+}
+
+size_t UnswizzleTextureSanitized(std::span<u8> output, std::span<const u8> input,
+                                 u32 bytes_per_pixel, u32 width, u32 height, u32 depth,
+                                 u32 block_height, u32 block_depth,
+                                 VideoCore::Surface::PixelFormat format, u32 stride_alignment) {
+    const u32 stride = Common::AlignUpLog2(width, stride_alignment) * bytes_per_pixel;
+    const u32 new_bpp = std::min(4U, static_cast<u32>(std::countr_zero(width * bytes_per_pixel)));
+    width = (width * bytes_per_pixel) >> new_bpp;
+    bytes_per_pixel = 1U << new_bpp;
+    return Swizzle<false>(output, input, bytes_per_pixel, width, height, depth, block_height,
+                          block_depth, stride, format);
 }
 
 void SwizzleTexture(std::span<u8> output, std::span<const u8> input, u32 bytes_per_pixel, u32 width,

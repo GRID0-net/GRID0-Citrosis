@@ -9,7 +9,6 @@ package dev.lemon.lemon_emu.fragments
 
 import dev.lemon.lemon_emu.ui.modern.PerformanceInfo
 import dev.lemon.lemon_emu.overlay.model.OverlayControlData
-import dev.lemon.lemon_emu.nextendo.NextendoAccount
 import dev.lemon.lemon_emu.utils.PerGameOverlay
 import android.Manifest
 import android.annotation.SuppressLint
@@ -2141,7 +2140,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                             ) {
                                 "LSFG"
                             } else {
-                                "Lemon FG"
+                                "Citrosis FG"
                             }
                             fpsText += String.format(" (%s: %.1f)", engine, presentedFps)
                         }
@@ -2996,7 +2995,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             emulationThread.join()
             emulationThread = Thread({
                 Log.debug("[EmulationFragment] Starting emulation thread.")
-                NextendoAccount.prepareForBoot()
                 NativeLibrary.run(gamePath, programIndex, false)
             }, "NativeEmulation")
             emulationThread.start()
@@ -3068,7 +3066,6 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                     NativeLibrary.surfaceChanged(currentSurface)
                     emulationThread = Thread({
                         Log.debug("[EmulationFragment] Starting emulation thread.")
-                        NextendoAccount.prepareForBoot()
                         NativeLibrary.run(gamePath, programIndex, true)
                     }, "NativeEmulation")
                     emulationThread.start()

@@ -4,8 +4,10 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/core.h"
 #include "core/hle/service/server_manager.h"
 #include "core/hle/service/sockets/bsd.h"
+#include "core/hle/service/sockets/deferred_poll_waker.h"
 #include "core/hle/service/sockets/nsd.h"
 #include "core/hle/service/sockets/sfdnsres.h"
 #include "core/hle/service/sockets/sockets.h"
@@ -66,15 +68,25 @@ void LoopProcess(Core::System& system) {
 
     server_manager->RegisterNamedService("ethc:c", std::make_shared<ETHC_C>(system), 5);
     server_manager->RegisterNamedService("ethc:i", std::make_shared<ETHC_I>(system), 5);
-    server_manager->RegisterNamedService("bsd:s", std::make_shared<BSD_USA>(system, "bsd:s", false), 0x7E);
-    server_manager->RegisterNamedService("bsd:u", std::make_shared<BSD_USA>(system, "bsd:u", true), 0x0f);
-    server_manager->RegisterNamedService("bsd:a", std::make_shared<BSD_USA>(system, "bsd:a", true), 0x17);
+    Kernel::KEvent* deferral_event{};
+    server_manager->ManageDeferral(&deferral_event);
+    auto waker = std::make_shared<DeferredPollWaker>(deferral_event, system.Kernel());
+    const auto make_bsd = [&](const char* name, bool is_user) {
+        auto bsd = std::make_shared<BSD_USA>(system, name, is_user);
+        bsd->SetDeferredPollWaker(waker);
+        return bsd;
+    };
+    server_manager->RegisterNamedService("bsd:s", make_bsd("bsd:s", false), 0x7E);
+    server_manager->RegisterNamedService("bsd:u", make_bsd("bsd:u", true), 0x0f);
+    server_manager->RegisterNamedService("bsd:a", make_bsd("bsd:a", true), 0x17);
     server_manager->RegisterNamedService("bsd:nu", std::make_shared<BSD_NU>(system), 4);
     server_manager->RegisterNamedService("bsdcfg", std::make_shared<BSDCFG>(system, "bsdcfg"));
     server_manager->RegisterNamedService("ifcfg", std::make_shared<BSDCFG>(system, "ifcfg"));
     server_manager->RegisterNamedService("nsd:a", std::make_shared<NSD>(system, "nsd:a"));
     server_manager->RegisterNamedService("nsd:u", std::make_shared<NSD>(system, "nsd:u"));
-    server_manager->RegisterNamedService("sfdnsres", std::make_shared<SFDNSRES>(system), 30);
+    auto resolver = std::make_shared<SFDNSRES>(system);
+    resolver->SetDeferredPollWaker(waker);
+    server_manager->RegisterNamedService("sfdnsres", std::move(resolver), 30);
     server_manager->RegisterNamedService("dns:priv", std::make_shared<DNS_PRIV>(system));
     server_manager->RegisterNamedService("eth:nd", std::make_shared<ISfDriverServiceCreator>(system));
 

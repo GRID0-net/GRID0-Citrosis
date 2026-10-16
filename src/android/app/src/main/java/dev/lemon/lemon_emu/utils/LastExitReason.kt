@@ -15,7 +15,7 @@ import java.util.Locale
 /**
  * Writes down why Android ended Lemon's previous run (out of memory, native crash, killed by the
  * system...). A game that just disappears leaves nothing in Lemon's own log, so the reason is
- * appended to that run's log (lemon_log.txt.old.txt, the one users send) and logged again in the
+ * appended to that run's log (citrosis_log.txt.old.txt, the one users send) and logged again in the
  * current one.
  */
 object LastExitReason {
@@ -39,9 +39,9 @@ object LastExitReason {
         Log.info("[ExitReason] $text")
 
         try {
-            val previousLog = File(logDir, "lemon_log.txt.old.txt")
+            val previousLog = File(logDir, "citrosis_log.txt.old.txt")
             if (previousLog.exists()) {
-                previousLog.appendText("\n[Lemon] $text\n")
+                previousLog.appendText("\n[Citrosis] $text\n")
             }
         } catch (e: Exception) {
             Log.warning("[ExitReason] Could not append to the previous log: ${e.javaClass.simpleName}")

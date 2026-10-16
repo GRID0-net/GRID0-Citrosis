@@ -20,6 +20,10 @@ namespace Core {
 class System;
 }
 
+namespace Common {
+class HostMemory;
+}
+
 namespace Kernel {
 
 class KPageGroup;
@@ -213,6 +217,12 @@ private:
         }
         void Free(KPhysicalAddress addr, size_t num_pages) {
             m_heap.Free(addr, num_pages);
+            if (m_backing)
+                DiscardFreedPages(addr, num_pages);
+        }
+
+        void SetBacking(Common::HostMemory* backing) {
+            m_backing = backing;
         }
 
         void SetInitialUsedHeapSize(size_t reserved_size) {
@@ -324,6 +334,8 @@ private:
     private:
         using RefCount = u16;
 
+        void DiscardFreedPages(KPhysicalAddress addr, size_t num_pages);
+        Common::HostMemory* m_backing{};
         KPageHeap m_heap;
         std::vector<RefCount> m_page_reference_counts;
         KVirtualAddress m_management_region{};

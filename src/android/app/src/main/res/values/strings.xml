@@ -4,16 +4,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
 
     <!-- General application strings -->
-    <string name="app_name" translatable="false">Lemon</string>
+    <string name="app_name" translatable="false">Citrosis</string>
     <string name="app_disclaimer">This software will run games for the Nintendo Switch game console. No game titles or keys are included.&lt;br /&gt;&lt;br /&gt;Before you begin, please locate your <![CDATA[<b> prod.keys </b>]]> file on your device storage.</string>
     <string name="notice_notification_channel_name">Notices and errors</string>
     <string name="notice_notification_channel_id" translatable="false">noticesAndErrors</string>
     <string name="notice_notification_channel_description">Shows notifications when something goes wrong.</string>
     <string name="notification_permission_not_granted">Notification permission not granted!</string>
-    <string name="app_notification_channel_name" translatable="false">Lemon</string>
-    <string name="app_notification_channel_id" translatable="false">Lemon</string>
-    <string name="app_notification_channel_description">Lemon Switch emulator notifications</string>
-    <string name="app_notification_running">Lemon is Running</string>
+    <string name="app_notification_channel_name" translatable="false">Citrosis</string>
+    <string name="app_notification_channel_id" translatable="false">Citrosis</string>
+    <string name="app_notification_channel_description">Citrosis Switch emulator notifications</string>
+    <string name="app_notification_running">Citrosis is Running</string>
     <string name="seconds">Seconds</string>
 
     <!-- Spinbox strings -->
@@ -210,7 +210,7 @@
 
     <!-- Setup strings -->
     <string name="welcome">Welcome!</string>
-    <string name="welcome_description">Learn how to setup &lt;b>Lemon&lt;/b> and jump into emulation.</string>
+    <string name="welcome_description">Learn how to setup &lt;b>Citrosis&lt;/b> and jump into emulation.</string>
     <string name="get_started">Get started</string>
     <string name="keys">Keys</string>
     <string name="keys_description">Select your &lt;b>prod.keys&lt;/b> file</string>
@@ -235,8 +235,8 @@
     <string name="game_image_desc">Screenshot for %1$s</string>
     <string name="folder">Folder</string>
     <string name="dont_show_again">Don\'t Show Again</string>
-    <string name="support_prompt_title">Enjoying Lemon?</string>
-    <string name="support_prompt_description">Lemon is a small independent project. If you enjoy it, you can help keep it going with a Ko-fi or by buying me a coffee, or join the community on Discord to share feedback and get help. Thank you!</string>
+    <string name="support_prompt_title">Enjoying Citrosis?</string>
+    <string name="support_prompt_description">Citrosis is a small independent project. If you enjoy it, you can help keep it going with a Ko-fi or by buying me a coffee, or join the community on Discord to share feedback and get help. Thank you!</string>
     <string name="not_now">Not now</string>
     <string name="add_directory_success">New game directory added successfully </string>
     <string name="enable_update_checks">Check for Updates</string>
@@ -269,17 +269,17 @@
     <string name="lemon_tab_data">Data and saves</string>
     <string name="lemon_search_settings">Search settings</string>
     <string name="settings_search_no_results">No settings match your search</string>
-    <string name="lemon_welcome_title">Welcome to Lemon</string>
+    <string name="lemon_welcome_title">Welcome to Citrosis</string>
     <string name="lemon_welcome_subtitle">Switch on your Android, tuned for Adreno</string>
-    <string name="lemon_welcome_feature_driver">Lemon-Ade GPU driver built in</string>
+    <string name="lemon_welcome_feature_driver">Citrosis bundled Turnip GPU driver built in</string>
     <string name="lemon_welcome_feature_lite">Lighter settings for less powerful GPUs</string>
     <string name="lemon_welcome_feature_migrate">Bring your saves over from Eden or Citron</string>
     <string name="lemon_welcome_feature_savestate">Quick save in any game</string>
     <string name="lemon_welcome_start">Get started</string>
     <string name="lemon_ui_modern_title">New interface</string>
-    <string name="lemon_ui_modern_description">The redesigned Lemon interface. Turn it off to go back to the classic one; it applies when you return to the library.</string>
+    <string name="lemon_ui_modern_description">The redesigned Citrosis interface. Turn it off to go back to the classic one; it applies when you return to the library.</string>
     <string name="manage_game_folders">Manage game folders</string>
-    <string name="select_games_folder_description">Allows Lemon to populate the games list</string>
+    <string name="select_games_folder_description">Allows Citrosis to populate the games list</string>
     <string name="add_games_warning">Skip selecting games folder?</string>
     <string name="add_games_warning_description">Games won\'t be displayed in the Games list if a folder isn\'t selected.</string>
     <string name="add_games_warning_help">https://yuzu-mirror.github.io/help/quickstart/#dumping-games</string>
@@ -365,13 +365,13 @@
     <string name="post_processing_empty">No effects found. Place .fx files in this folder:</string>
     <string name="frame_gen">Frame generation</string>
     <string name="frame_gen_per_game_description">Configure frame generation for this game</string>
-    <string name="frame_gen_description">Inserts generated frames between the rendered ones, with Lemon FG (built in) or Lossless Scaling (needs your own Lossless.dll). Forces FIFO presentation while enabled.</string>
+    <string name="frame_gen_description">Inserts generated frames between the rendered ones, with Citrosis FG (built in) or Lossless Scaling (needs your own Lossless.dll). Forces FIFO presentation while enabled.</string>
     <string name="frame_gen_engine">Engine</string>
-    <string name="frame_gen_engine_description">Lemon FG is Lemon\'s own frame generation: built in, nothing else needed, and no Lossless Scaling code in it. Lossless Scaling runs the shaders of your own copy of Lossless.dll; without it installed, Lemon FG is used.</string>
-    <string name="frame_gen_engine_lemon">Lemon FG</string>
-    <string name="lemon_fg_included">Lemon FG is built in</string>
-    <string name="lemon_fg_included_description">Lemon comes with its own frame generation, Lemon FG: nothing to install. Lossless.dll is only needed if you\'d rather use Lossless Scaling\'s frame generation and own a copy of it.</string>
-    <string name="lemon_fg_use">Use Lemon FG</string>
+    <string name="frame_gen_engine_description">Citrosis FG is Citrosis\'s own frame generation: built in, nothing else needed, and no Lossless Scaling code in it. Lossless Scaling runs the shaders of your own copy of Lossless.dll; without it installed, Citrosis FG is used.</string>
+    <string name="frame_gen_engine_lemon">Citrosis FG</string>
+    <string name="lemon_fg_included">Citrosis FG is built in</string>
+    <string name="lemon_fg_included_description">Citrosis comes with its own frame generation, Citrosis FG: nothing to install. Lossless.dll is only needed if you\'d rather use Lossless Scaling\'s frame generation and own a copy of it.</string>
+    <string name="lemon_fg_use">Use Citrosis FG</string>
     <string name="lossless_scaling_load_anyway">Load Lossless.dll</string>
     <string name="frame_gen_engine_lossless">Lossless Scaling</string>
     <string name="frame_gen_multiplier">Frame multiplier</string>
@@ -402,8 +402,8 @@
     <string name="frame_gen_flow_scale">Motion estimation resolution</string>
     <string name="frame_gen_flow_scale_description">Resolution of the optical flow pass, as a fraction of the output. Lowering it is the cheapest way to reclaim performance.</string>
     <string name="frame_gen_unsupported">Frame generation unavailable</string>
-    <string name="frame_gen_unsupported_description">This GPU driver supports neither Lemon FG (it needs subgroup arithmetic in compute shaders) nor Lossless Scaling (it needs the Vulkan memory model and half precision, float16).</string>
-    <string name="lossless_scaling_setup_description">Optional. Provide your own Lossless.dll to use Lossless Scaling\'s frame generation instead of Lemon FG</string>
+    <string name="frame_gen_unsupported_description">This GPU driver supports neither Citrosis FG (it needs subgroup arithmetic in compute shaders) nor Lossless Scaling (it needs the Vulkan memory model and half precision, float16).</string>
+    <string name="lossless_scaling_setup_description">Optional. Provide your own Lossless.dll to use Lossless Scaling\'s frame generation instead of Citrosis FG</string>
     <string name="lossless_scaling_install">Install Lossless.dll</string>
     <string name="lossless_scaling_install_description">Frame generation needs your own legal copy of Lossless.dll from Lossless Scaling</string>
     <string name="lossless_scaling_replace_description">Select a different copy of Lossless.dll</string>
@@ -411,7 +411,7 @@
     <string name="frame_generation_supported">Supported</string>
     <string name="frame_generation_unsupported">Unsupported (no Vulkan memory model or float16)</string>
     <string name="lossless_scaling">Lossless Scaling</string>
-    <string name="lossless_scaling_description">Provide your own copy of Lossless.dll to use Lossless Scaling\'s frame generation instead of Lemon FG</string>
+    <string name="lossless_scaling_description">Provide your own copy of Lossless.dll to use Lossless Scaling\'s frame generation instead of Citrosis FG</string>
     <string name="lossless_scaling_installed">Installed</string>
     <string name="lossless_scaling_not_installed">Not installed</string>
     <string name="lossless_scaling_replace">Replace</string>
@@ -442,15 +442,15 @@
     <string name="search_recently_played">Recently played</string>
     <string name="search_recently_added">Recently added</string>
     <string name="filter_favorites">Favorites</string>
-    <string name="open_user_folder">Open Lemon folder</string>
-    <string name="open_user_folder_description">Manage Lemon\'s internal files</string>
+    <string name="open_user_folder">Open Citrosis folder</string>
+    <string name="open_user_folder_description">Manage Citrosis\'s internal files</string>
     <string name="app_settings_description">Modify the behavior and look of the app</string>
     <string name="no_file_manager">No file manager found</string>
-    <string name="notification_no_directory_link">Could not open Lemon directory</string>
+    <string name="notification_no_directory_link">Could not open Citrosis directory</string>
     <string name="notification_no_directory_link_description">Please locate the user folder with the file manager\'s side panel manually.</string>
     <string name="manage_save_data">Manage save data</string>
     <string name="migrate_from_emulator">Migrate from another emulator</string>
-    <string name="migrate_from_emulator_description">Bring your saves over from Eden, Citron or yuzu without opening them (plus keys and firmware if Lemon has none yet)</string>
+    <string name="migrate_from_emulator_description">Bring your saves over from Eden, Citron or yuzu without opening them (plus keys and firmware if Citrosis has none yet)</string>
     <string name="migrate_from_emulator_setup_description">Coming from another emulator? Import your saves, keys and firmware in one step</string>
     <string name="migrate_no_sources">No compatible emulator found. Eden, Citron, yuzu and other yuzu-based emulators are supported.</string>
     <string name="migrate_choose_source">Migrate from</string>
@@ -458,17 +458,17 @@
     <string name="migrate_nothing">There is nothing to import from %1$s.</string>
     <string name="migrate_confirm_title">Migrate from %1$s</string>
     <string name="migrate_found_saves">Saves found: %1$d</string>
-    <string name="migrate_found_conflicts">%1$d of those games already have a save in Lemon.</string>
-    <string name="migrate_found_keys">Your keys will be imported too (Lemon has none yet).</string>
-    <string name="migrate_found_firmware">Your firmware will be imported too (Lemon has none yet).</string>
-    <string name="migrate_replace">Replace Lemon saves</string>
-    <string name="migrate_keep">Keep Lemon saves</string>
+    <string name="migrate_found_conflicts">%1$d of those games already have a save in Citrosis.</string>
+    <string name="migrate_found_keys">Your keys will be imported too (Citrosis has none yet).</string>
+    <string name="migrate_found_firmware">Your firmware will be imported too (Citrosis has none yet).</string>
+    <string name="migrate_replace">Replace Citrosis saves</string>
+    <string name="migrate_keep">Keep Citrosis saves</string>
     <string name="migrate_import">Import</string>
     <string name="migrating">Migrating</string>
-    <string name="migrate_done">Imported: %1$d · Kept from Lemon: %2$d · Failed: %3$d</string>
+    <string name="migrate_done">Imported: %1$d · Kept from Citrosis: %2$d · Failed: %3$d</string>
     <string name="migrate_done_keys">Keys imported.</string>
     <string name="migrate_done_firmware">Firmware imported.</string>
-    <string name="migrate_done_backup">The Lemon saves that were replaced are backed up in %1$s</string>
+    <string name="migrate_done_backup">The Citrosis saves that were replaced are backed up in %1$s</string>
     <string name="manage_save_data_description">Save data found. Please select an option below.</string>
     <string name="import_save_warning">Import save data</string>
     <string name="import_save_warning_description">This will overwrite all existing save data with the provided file. Are you sure that you want to continue?</string>
@@ -484,13 +484,13 @@
     <string name="firmware_installed_failure_description">Make sure the firmware nca files are at the root of the zip and try again.</string>
     <string name="firmware_uninstalled_failure">Firmware uninstallation failed</string>
     <string name="share_log">Share debug logs</string>
-    <string name="share_log_description">Share Lemon\'s log file to debug issues</string>
+    <string name="share_log_description">Share Citrosis\'s log file to debug issues</string>
     <string name="share_log_missing">No log file found</string>
     <string name="share_gpu_log">Share GPU logs</string>
-    <string name="share_gpu_log_description">Share Lemon\'s GPU log file to debug graphics issues</string>
+    <string name="share_gpu_log_description">Share Citrosis\'s GPU log file to debug graphics issues</string>
     <string name="share_gpu_log_missing">No GPU log file found</string>
     <string name="share_crash_log">Share crash log</string>
-    <string name="share_crash_log_description">Share the last crash Lemon recorded to help report a bug</string>
+    <string name="share_crash_log_description">Share the last crash Citrosis recorded to help report a bug</string>
     <string name="share_crash_log_missing">No crash log found</string>
     <string name="install_game_content">Install game content</string>
     <string name="install_game_content_description">Install game updates or DLC</string>
@@ -505,7 +505,7 @@
     <string name="install_game_content_help_link">https://yuzu-mirror.github.io/help/quickstart/#dumping-installed-updates</string>
     <string name="custom_driver_not_supported">Custom drivers not supported</string>
     <string name="custom_driver_not_supported_description">Custom driver loading isn\'t currently supported for this device.\nCheck this option again in the future to see if support was added!</string>
-    <string name="manage_lemon_data">Manage Lemon data</string>
+    <string name="manage_lemon_data">Manage Citrosis data</string>
     <string name="manage_lemon_data_description">Import/export firmware, keys, user data, and more!</string>
     <string name="game_folders">Game folders</string>
     <string name="deep_scan">Deep scan</string>
@@ -565,20 +565,20 @@
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="about_app_description">An Android-only Nintendo Switch emulator built for Adreno GPUs</string>
     <string name="contributors">Contributors</string>
-    <string name="contributors_description">The people and projects Lemon is built on</string>
-    <string name="team_lemon" translatable="false">Team Lemon</string>
+    <string name="contributors_description">The people and projects Citrosis is built on</string>
+    <string name="team_lemon" translatable="false">Team Citrosis</string>
     <string name="team_lemon_members" translatable="false">Ghael · Seak · Sidgey</string>
-    <string name="patrons_thanks">Thanks to our patrons, Xefir and HungNguYen, for supporting Lemon!</string>
+    <string name="patrons_thanks">Thanks to our patrons, Xefir and HungNguYen, for supporting Citrosis!</string>
     <string name="team_link">https://lemon-emu.org/#team</string>
     <string name="logo_credit">Logo designed by Madeleine, who made it for free and with endless patience. Thank you so much, Madeleine!</string>
     <string name="contributors_link" translatable="false">https://github.com/Ghael-V/Lemon-Project#special-thanks</string>
-    <string name="licenses_description">Open-source projects that make Lemon possible</string>
+    <string name="licenses_description">Open-source projects that make Citrosis possible</string>
     <string name="build">Build</string>
     <string name="user_data">User data</string>
     <string name="user_data_description">Import/export all app data.\n\nWhen importing user data, all existing user data will be deleted!\n\nImporting data from Citron may cause issues. It\'s recommended to manually import all needed data.</string>
     <string name="exporting_user_data">Exporting user data…</string>
     <string name="importing_user_data">Importing user data…</string>
-    <string name="invalid_lemon_backup">Invalid Lemon backup</string>
+    <string name="invalid_lemon_backup">Invalid Citrosis backup</string>
     <string name="user_data_export_success">User data exported successfully</string>
     <string name="user_data_import_success">User data imported successfully</string>
     <string name="user_data_export_cancelled">Export cancelled</string>
@@ -599,8 +599,8 @@
     <string name="update_checking">Checking for updates…</string>
     <string name="update_none">No newer version found, or the update server could not be reached.</string>
     <string name="update_open_page">Open download page</string>
-    <string name="whats_new_title">What\'s new in Lemon 1.2</string>
-    <string name="whats_new_body">• Lemon FG: Lemon\'s own frame generation, built in (Settings → Graphics → Frame generation). Nothing to install; Lossless Scaling stays an option if you have your own Lossless.dll.\n• Accurate is the default GPU mode again: the optimizations of this version pay for it (Lemon Lite keeps Fast).\n• A lighter wait for the GPU: no flickering and fewer stalls, with nothing to set.\n• Mali: Splatoon 2 and 3 Inklings and button text drawn right, and BC4/BC5 textures take half the memory.\n• Adreno: Marvel Ultimate Alliance 3 without spikes or flickering lights.\n• Mario Kart 8 Deluxe connects to Nextendo Network again.\n• TOTK grass stays without any option, Splatoon 3 loads faster, and Lemon-Ade v0.0.7 is included.</string>
+    <string name="whats_new_title">What\'s new in Citrosis 1.2</string>
+    <string name="whats_new_body">• Citrosis FG: Citrosis\'s own frame generation, built in (Settings → Graphics → Frame generation). Nothing to install; Lossless Scaling stays an option if you have your own Lossless.dll.\n• Accurate is the default GPU mode again: the optimizations of this version pay for it (Citrosis Lite keeps Fast).\n• A lighter wait for the GPU: no flickering and fewer stalls, with nothing to set.\n• Mali: Splatoon 2 and 3 Inklings and button text drawn right, and BC4/BC5 textures take half the memory.\n• Adreno: Marvel Ultimate Alliance 3 without spikes or flickering lights.\n• Mario Kart 8 Deluxe connects to Nextendo Network again.\n• TOTK grass stays without any option, Splatoon 3 loads faster, and Citrosis bundled Turnip v0.0.7 is included.</string>
     <string name="whats_new_got_it">Got it</string>
     <string name="whats_new_read_more">Read more</string>
     <string name="whats_new_link">https://lemon-emu.org/#features</string>
@@ -766,7 +766,7 @@
     <string name="extended_logging">Enable extended logging</string>
     <string name="extended_logging_description">Increases the maximum log file size from 100 MiB to 1 GiB.</string>
     <string name="log_filter">Log filter</string>
-    <string name="log_filter_description">Controls Lemon\'s log categories. Example: *:Info Service.LM:Debug</string>
+    <string name="log_filter_description">Controls Citrosis\'s log categories. Example: *:Info Service.LM:Debug</string>
 
     <!-- GPU Logging strings -->
     <string name="gpu_logging_header">GPU Logging</string>
@@ -892,7 +892,7 @@
     <string name="settings_reset">Settings reset</string>
     <string name="reset_everything">Reset all settings</string>
     <string name="reset_everything_description">Back to the default values of a fresh install</string>
-    <string name="reset_everything_dialog_description">Every setting goes back to the value a fresh install of Lemon has: graphics, system, controls and button mappings, audio, the on-screen controller layout and the app options. Anything you tuned yourself, such as resolution, GPU mode or the graphics driver, goes back to the default. Your game folders, storage locations, keys, firmware and saves are kept. This can not be undone.</string>
+    <string name="reset_everything_dialog_description">Every setting goes back to the value a fresh install of Citrosis has: graphics, system, controls and button mappings, audio, the on-screen controller layout and the app options. Anything you tuned yourself, such as resolution, GPU mode or the graphics driver, goes back to the default. Your game folders, storage locations, keys, firmware and saves are kept. This can not be undone.</string>
     <string name="reset_everything_delete_game_settings">Also delete the custom settings of every game</string>
     <string name="reset_everything_delete_game_settings_hint">Each game goes back to the general settings. This also removes its own controller layout and which of its updates, DLC and mods were switched off.</string>
     <string name="reset_everything_confirm">Reset</string>
@@ -935,7 +935,7 @@
     <string name="installed_label">%1$s (Installed)</string>
     <string name="system_gpu_driver">System GPU driver</string>
     <string name="bundled_driver_reverted_title">Switched back to the system GPU driver</string>
-    <string name="bundled_driver_reverted_description">The built-in Lemon-Ade driver closed the app before the game could show anything, so Lemon went back to your device\'s system driver. You can pick another driver in Settings &gt; GPU driver manager.</string>
+    <string name="bundled_driver_reverted_description">The built-in Citrosis bundled Turnip driver closed the app before the game could show anything, so Citrosis went back to your device\'s system driver. You can pick another driver in Settings &gt; GPU driver manager.</string>
     <string name="installing_driver">Installing driver…</string>
 
     <!-- GPU driver fetcher -->
@@ -962,9 +962,9 @@
     <string name="adaptive_performance_description">Automatically lowers graphics settings if the device overheats or can\'t keep up, and notifies you when it does</string>
     <string name="thermal_throttle_applied">Device is running hot - switched to Battery preset</string>
     <string name="perf_throttle_applied">Performance is low - switched to Battery preset</string>
-    <string name="adaptive_performance_notif_title">Lemon reduced graphics settings</string>
-    <string name="adaptive_performance_notif_thermal_text">Your device got too hot, so Lemon switched to the Battery preset. Tap to open Settings if you\'d like to turn this off.</string>
-    <string name="adaptive_performance_notif_perf_text">This game was running well below full speed, so Lemon switched to the Battery preset. Tap to open Settings if you\'d like to turn this off.</string>
+    <string name="adaptive_performance_notif_title">Citrosis reduced graphics settings</string>
+    <string name="adaptive_performance_notif_thermal_text">Your device got too hot, so Citrosis switched to the Battery preset. Tap to open Settings if you\'d like to turn this off.</string>
+    <string name="adaptive_performance_notif_perf_text">This game was running well below full speed, so Citrosis switched to the Battery preset. Tap to open Settings if you\'d like to turn this off.</string>
     <string name="enabled">Enabled</string>
     <string name="preset_battery">Battery saver</string>
     <string name="preset_balanced">Balanced</string>
@@ -1021,7 +1021,7 @@
     <string name="remove_from_favorites">Remove from favorites</string>
     <string name="add_to_home_screen">Add to Home Screen</string>
     <string name="widget_description">Launch your most recently played game</string>
-    <string name="widget_no_recent_game">Open Lemon</string>
+    <string name="widget_no_recent_game">Open Citrosis</string>
     <string name="widget_game_icon_desc">Game icon</string>
     <string name="per_game_settings_description">Edit settings specific to this game</string>
     <string name="launch_options">Launch config</string>
@@ -1065,7 +1065,7 @@
     <string name="clear_shader_cache_warning_description">You will experience more stuttering as the shader cache regenerates</string>
     <string name="cleared_shaders_successfully">Cleared shaders successfully</string>
     <string name="driver_shader_wipe_dialog_title">Shaders Cleared</string>
-    <string name="driver_shader_wipe_dialog_message">Lemon has automatically cleared all shader caches to maintain Vulkan pipeline validation. This is required when switching GPU drivers to prevent crashes and graphical corruption. You may experience some stuttering as shaders rebuild.</string>
+    <string name="driver_shader_wipe_dialog_message">Citrosis has automatically cleared all shader caches to maintain Vulkan pipeline validation. This is required when switching GPU drivers to prevent crashes and graphical corruption. You may experience some stuttering as shaders rebuild.</string>
     <string name="addons_game">Addons: %1$s</string>
     <string name="save_data">Save data</string>
     <string name="save_data_description">Manage save data specific to this game</string>
@@ -1180,7 +1180,7 @@
     <string name="emulation_quick_load_state_incompatible">Can\'t load: since you saved, the game did something Quick Load cannot undo yet (or the save is from before the app was closed). Nothing was changed.</string>
     <string name="emulation_quick_save_state_working">Saving…</string>
     <string name="emulation_quick_load_state_working">Loading…</string>
-    <string name="lemon_cheater">Lemon Cheater</string>
+    <string name="lemon_cheater">Citrosis Cheater</string>
     <string name="lemon_cheater_value_hint">Value</string>
     <string name="lemon_cheater_new_search">New search</string>
     <string name="lemon_cheater_refine">Refine</string>
@@ -1488,7 +1488,7 @@
     <string name="enable_qlaunch_button">QLaunch</string>
     <string name="enable_qlaunch_button_description">Show the button to launch QLaunch</string>
     <string name="boot_into_qlaunch">Start in QLaunch</string>
-    <string name="boot_into_qlaunch_description">Opening Lemon from the launcher starts QLaunch, the console\'s home menu. Needs the firmware.</string>
+    <string name="boot_into_qlaunch_description">Opening Citrosis from the launcher starts QLaunch, the console\'s home menu. Needs the firmware.</string>
 
     <!-- App Language -->
     <string name="app_language">App Language</string>
@@ -1522,7 +1522,7 @@
 
     <!-- Static Themes -->
     <string name="static_theme_color">Theme Color</string>
-    <string name="lemon_theme">Lemon</string>
+    <string name="lemon_theme">Citrosis</string>
     <string name="violet">Violet</string>
     <string name="blue">Blue</string>
     <string name="cyan">Cyan</string>
@@ -1568,10 +1568,10 @@
     <string name="settings_online_description">Nextendo Network, local multiplayer and airplane mode</string>
     <string name="settings_content">Content and data</string>
     <string name="settings_content_description">Game folders, keys and firmware, saves and storage paths</string>
-    <string name="settings_lemon">Lemon</string>
+    <string name="settings_lemon">Citrosis</string>
     <string name="settings_lemon_description">App language, look, updates and library buttons</string>
     <string name="settings_help">Help</string>
-    <string name="settings_help_description">Share logs, system information and about Lemon</string>
+    <string name="settings_help_description">Share logs, system information and about Citrosis</string>
     <string name="settings_advanced_debug">Advanced and debug</string>
     <string name="settings_advanced_debug_description">CPU options, logging and developer tools</string>
     <string name="settings_graphics_advanced">Advanced graphics</string>
@@ -1586,17 +1586,6 @@
     <string name="settings_local_multiplayer">Local multiplayer</string>
     <string name="share_logs">Share logs</string>
     <string name="share_logs_description">Send the emulator, GPU or crash log when reporting a problem</string>
-    <string name="nextendo_network">Nextendo Network</string>
-    <string name="nextendo_network_description">Online play on community servers</string>
-    <string name="nextendo_enable">Online play with Nextendo Network</string>
-    <string name="nextendo_enable_description">Sends the games\' online traffic to the Nextendo Network servers instead of Nintendo\'s. Needs a Nextendo account.</string>
-    <string name="nextendo_sign_in">Sign in</string>
-    <string name="nextendo_sign_in_description">Opens nextendo.network in your browser. Lemon never sees your password.</string>
-    <string name="nextendo_sign_in_failed">Could not sign in to Nextendo Network (%1$s)</string>
-    <string name="nextendo_sign_out">Sign out</string>
-    <string name="nextendo_signed_in_as">Signed in as %1$s</string>
-    <string name="nextendo_unavailable">This build of Lemon is not registered with Nextendo Network yet.</string>
-    <string name="nextendo_no_game_token">Could not connect to Nextendo Network. Online play won\'t work this session; check your connection and restart the game.</string>
 
     <string name="enable_overlay">Enable Overlay Applet</string>
     <string name="enable_overlay_description">Enables Horizon\'s built-in overlay applet. Press and hold the home button for 1 second to show it.</string>
@@ -2137,7 +2126,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     </string>
     <string name="license_eden" translatable="false">Eden</string>
-    <string name="license_eden_description" translatable="false">The open-source Nintendo Switch emulator whose work Lemon is built upon (itself descended from yuzu)</string>
+    <string name="license_eden_description" translatable="false">The open-source Nintendo Switch emulator whose work Citrosis is built upon (itself descended from yuzu)</string>
     <string name="license_eden_link" translatable="false">https://git.eden-emu.dev/eden-emu/eden</string>
     <string name="license_eden_copyright" translatable="false">Copyright © Eden Emulator Project and yuzu Emulator Project contributors</string>
     <string name="license_eden_text" translatable="false">
@@ -2173,4 +2162,81 @@ along with this program. If not, see https://www.gnu.org/licenses/gpl-3.0.html
     <string name="overlay_save_all_games">All games</string>
     <string name="overlay_discard_changes">Discard changes</string>
     <string name="overlay_saved_for_game">On-screen controls saved for %1$s</string>
+
+<string name="reclaim_guest_memory">Reclaim freed guest memory</string>
+    <string name="reclaim_guest_memory_description">Gives memory the game frees or has not touched yet back to Android instead of keeping it reserved. Lowers RAM use by hundreds of MB to several GB, so Android is far less likely to close the emulator on 8 GB devices.</string>
+    <string name="fit_caches_to_ram">Fit GPU caches to device RAM</string>
+    <string name="fit_caches_to_ram_description">Sizes the texture and buffer caches from your device\'s RAM rather than the GPU heap, and clears them harder when Android runs low on memory. Turn off only on 16 GB+ devices if you see textures reloading.</string>
+
+
+    <string name="network_interface_header">Network interface</string>
+    <string name="network_interface">Network interface</string>
+    <string name="network_interface_description">The adapter the emulated Switch uses. Pick your ZeroTier, Tailscale or GRID0 adapter (usually tun0) to play LAN mode over the internet; broadcasts are steered onto it.</string>
+    <string name="network_interface_automatic">Automatic (default route)</string>
+    <string name="network_interface_none">None (offline)</string>
+    <string name="network_interface_wifi">Wi-Fi</string>
+    <string name="network_interface_mobile">Mobile data</string>
+    <string name="network_interface_vpn">VPN / ZeroTier</string>
+    <string name="network_interface_ethernet">Ethernet</string>
+    <string name="network_interface_unavailable">%1$s (not connected right now)</string>
+    <string name="citrosis_airplane_mode">Airplane mode</string>
+    <string name="citrosis_airplane_mode_description">Tells games the console has no network at all</string>
+    <string name="grid0_header">GRID0+</string>
+    <string name="grid0_advanced_header">GRID0+ server (advanced)</string>
+    <string name="grid0_username">GRID0+ username</string>
+    <string name="grid0_username_description">From the GRID0+ Discord bot\'s /register</string>
+    <string name="grid0_password">GRID0+ password</string>
+    <string name="grid0_password_description">From the GRID0+ Discord bot\'s /register</string>
+    <string name="grid0_test_login">Test GRID0+ login</string>
+    <string name="grid0_test_login_description">Signs in with the account above and shows the result</string>
+    <string name="grid0_test_login_running">Signing in to GRID0+…</string>
+    <string name="grid0_test_login_ok">GRID0+: %1$s</string>
+    <string name="grid0_test_login_failed">GRID0+ login failed: %1$s</string>
+    <string name="grid0_login_server">Login server</string>
+    <string name="grid0_login_server_description">Host or host:port the emulator signs in to. Defaults to GRID0+.</string>
+    <string name="grid0_redirect_address">Game server address</string>
+    <string name="grid0_redirect_address_description">IP address Nintendo\'s hostnames resolve to. Empty turns private servers off.</string>
+    <string name="grid0_nat_secondary">Secondary NAT address</string>
+    <string name="grid0_nat_secondary_description">IP for nncs2, which Pia\'s NAT check needs to differ from the main one</string>
+    <string name="grid0_ca_bundle">Custom CA bundle</string>
+    <string name="grid0_ca_bundle_description">Path to a PEM file of extra CAs games should trust. Empty uses the built-in SwitchNet CA.</string>
+
+
+    <string name="grid0_friends_title">GRID0+ Friends</string>
+    <string name="grid0_friends_home_description">Your GRID0+ friends, their status, and friend requests</string>
+    <string name="grid0_friends_signing_in">Signing in to GRID0+…</string>
+    <string name="grid0_friends_my_code">Friend code: %1$s</string>
+    <string name="grid0_friends_copy_code">Copy friend code</string>
+    <string name="grid0_friends_code_copied">Friend code copied</string>
+    <string name="grid0_friends_code_hint">Friend code, e.g. SW-1234-5678-9012</string>
+    <string name="grid0_friends_add">Add</string>
+    <string name="grid0_friends_request_sent">Friend request sent</string>
+    <string name="grid0_friends_tab">Friends</string>
+    <string name="grid0_friends_tab_count">Friends (%1$d online)</string>
+    <string name="grid0_friends_requests_tab">Requests</string>
+    <string name="grid0_friends_requests_tab_count">Requests (%1$d)</string>
+    <string name="grid0_friends_no_friends">No friends yet. Add one with their friend code above.</string>
+    <string name="grid0_friends_no_requests">No friend requests.</string>
+    <string name="grid0_friends_request_from">Wants to be your friend · %1$s</string>
+    <string name="grid0_friends_request_to">Request sent · %1$s</string>
+    <string name="grid0_friends_accept">Accept</string>
+    <string name="grid0_friends_decline">Decline</string>
+    <string name="grid0_friends_playing">Playing</string>
+    <string name="grid0_friends_playing_game">Playing %1$s</string>
+    <string name="grid0_friends_online">Online</string>
+    <string name="grid0_friends_offline">Offline</string>
+    <string name="grid0_friends_hidden">Status hidden</string>
+    <string name="grid0_friends_friend_details">Friend code: %1$s</string>
+    <string name="grid0_friends_remove">Remove friend</string>
+    <string name="grid0_friends_remove_confirm">Remove %1$s from your friends?</string>
+    <string name="grid0_friends_removed">Removed %1$s</string>
+    <string name="grid0_friends_refresh">Refresh</string>
+    <string name="grid0_friends_account_settings">GRID0+ account settings</string>
+    <string name="grid0_friends_not_signed_in">Not signed in</string>
+    <string name="grid0_friends_not_signed_in_description">Add your GRID0+ account to see your friends</string>
+    <string name="grid0_friends_not_signed_in_body">Get a login from the GRID0+ Discord bot (/register), then enter it under Network &amp; GRID0+.</string>
+    <string name="grid0_friends_sign_in_failed">Couldn\'t sign in to GRID0+</string>
+
+
+
 </resources>

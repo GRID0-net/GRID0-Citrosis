@@ -42,30 +42,30 @@ extern "C" {
 #include <libavcodec/jni.h>
 }
 
-#include "common/android/multiplayer/multiplayer.h"
+#include "citrosis_android.h"
 #include "common/android/android_common.h"
+#include "common/android/applets/web_browser.h"
 #include "common/android/id_cache.h"
+#include "common/android/multiplayer/multiplayer.h"
 #include "common/dynamic_library.h"
 #include "common/fs/fs_util.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
-#include "common/nextendo_session.h"
 #include "common/scm_rev.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "common/string_util.h"
 #include "common/thread.h"
-#include "frontend_common/play_time_manager.h"
 #include "core/constants.h"
 #include "core/core.h"
 #include "core/cpu_manager.h"
 #include "core/crypto/key_manager.h"
 #include "core/crypto/ncz_decompressor.h"
 #include "core/file_sys/card_image.h"
+#include "core/file_sys/common_funcs.h"
 #include "core/file_sys/content_archive.h"
 #include "core/file_sys/control_metadata.h"
 #include "core/file_sys/fs_filesystem.h"
-#include "core/file_sys/romfs.h"
 #include "core/file_sys/nca_metadata.h"
 #include "core/file_sys/romfs.h"
 #include "core/file_sys/submission_package.h"
@@ -79,8 +79,6 @@ extern "C" {
 #include "core/frontend/applets/profile_select.h"
 #include "core/frontend/applets/software_keyboard.h"
 #include "core/frontend/applets/web_browser.h"
-#include "common/android/applets/web_browser.h"
-#include "core/file_sys/common_funcs.h"
 #include "core/hle/service/am/applet_manager.h"
 #include "core/hle/service/am/frontend/applets.h"
 #include "core/hle/service/filesystem/filesystem.h"
@@ -90,6 +88,7 @@ extern "C" {
 #include "core/savestate.h"
 #include "frontend_common/config.h"
 #include "frontend_common/firmware_manager.h"
+#include "frontend_common/play_time_manager.h"
 #ifdef ENABLE_UPDATE_CHECKER
 #include "frontend_common/update_checker.h"
 #endif
@@ -363,8 +362,10 @@ Core::SystemResultStatus EmulationSession::InitializeEmulation(const std::string
                 : -1,
     };
 
+    Citrosis::Android::OnEmulationStarting();
     m_load_result = m_system.Load(EmulationSession::GetInstance().Window(), filepath, params);
     if (m_load_result != Core::SystemResultStatus::Success) {
+        Citrosis::Android::OnEmulationStopped();
         return m_load_result;
     }
 
@@ -400,6 +401,7 @@ void EmulationSession::ShutdownEmulation() {
         m_next_program_index = -1;
     }
 
+    Citrosis::Android::OnEmulationStopped();
     m_is_running = false;
     m_is_paused = false;
 
@@ -1883,7 +1885,7 @@ void Java_dev_lemon_lemon_1emu_NativeLibrary_run(JNIEnv* env, jobject jobj, jstr
 }
 
 void Java_dev_lemon_lemon_1emu_NativeLibrary_logDeviceInfo(JNIEnv* env, jclass clazz) {
-    LOG_INFO(Frontend, "Lemon Version: {}-{}", Common::g_scm_branch, Common::g_scm_desc);
+    LOG_INFO(Frontend, "Citrosis Version: {}-{}", Common::g_scm_branch, Common::g_scm_desc);
     LOG_INFO(Frontend, "Host OS: Android API level {}", android_get_device_api_level());
     // 16 KiB pages (newer Android 15+ devices) change what host memory mappings may look like.
     LOG_INFO(Frontend, "Host page size: {} bytes", sysconf(_SC_PAGESIZE));
@@ -1929,19 +1931,9 @@ void Java_dev_lemon_lemon_1emu_NativeLibrary_playTimeManagerInit(JNIEnv* env, jo
     play_time_manager = std::make_unique<PlayTime::PlayTimeManager>();
 }
 
-void Java_dev_lemon_lemon_1emu_NativeLibrary_setNextendoSession(JNIEnv* env, jobject obj,
-                                                              jlong pid, jstring username,
-                                                              jstring nex_token) {
-    Common::Nextendo::SetSession({
-        .pid = static_cast<u64>(pid),
-        .username = Common::Android::GetJString(env, username),
-        .nex_token = Common::Android::GetJString(env, nex_token),
-    });
-}
 
-void Java_dev_lemon_lemon_1emu_NativeLibrary_clearNextendoSession(JNIEnv* env, jobject obj) {
-    Common::Nextendo::ClearSession();
-}
+
+
 
 void Java_dev_lemon_lemon_1emu_NativeLibrary_playTimeManagerStart(JNIEnv* env, jobject obj) {
     if (play_time_manager) {
@@ -2516,7 +2508,7 @@ JNIEXPORT jobjectArray JNICALL Java_dev_lemon_lemon_1emu_NativeLibrary_getAllUse
     manager.ResetUserSaveFile();
 
     if (manager.GetUserCount() == 0) {
-        manager.CreateNewUser(Common::UUID::MakeRandom(), "Lemon");
+        manager.CreateNewUser(Common::UUID::MakeRandom(), "Citrosis");
         manager.WriteUserSaveFile();
     }
 
@@ -2733,7 +2725,7 @@ JNIEXPORT void JNICALL Java_dev_lemon_lemon_1emu_NativeLibrary_reloadProfiles(
 
     // create a default user if non exist
     if (manager.GetUserCount() == 0) {
-        manager.CreateNewUser(Common::UUID::MakeRandom(), "Lemon");
+        manager.CreateNewUser(Common::UUID::MakeRandom(), "Citrosis");
         manager.WriteUserSaveFile();
     }
 

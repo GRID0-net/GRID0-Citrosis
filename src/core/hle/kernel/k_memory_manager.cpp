@@ -8,7 +8,10 @@
 
 #include "common/alignment.h"
 #include "common/assert.h"
+#include "common/host_memory.h"
+#include "common/logging.h"
 #include "common/scope_exit.h"
+#include "common/settings.h"
 #include "core/core.h"
 #include "core/device_memory.h"
 #include "core/hle/kernel/initial_process.h"
@@ -49,6 +52,7 @@ KMemoryManager::KMemoryManager(Core::System& system)
 
 void KMemoryManager::Initialize(KVirtualAddress management_region, size_t management_region_size) {
 
+    Common::HostMemory::SetDiscardEnabled(Settings::values.reclaim_guest_memory.GetValue());
     // Clear the management region to zero.
     const KVirtualAddress management_region_end = management_region + management_region_size;
     // std::memset(GetVoidPointer(management_region), 0, management_region_size);
@@ -106,6 +110,9 @@ void KMemoryManager::Initialize(KVirtualAddress management_region, size_t manage
 
         const size_t cur_size = manager->Initialize(region_address, region_size, management_region,
                                                     management_region_end, region_pool);
+        if (Settings::values.reclaim_guest_memory.GetValue()) {
+            manager->SetBacking(&m_system.DeviceMemory().buffer);
+        }
         management_region += cur_size;
         ASSERT(management_region <= management_region_end);
 
@@ -506,35 +513,65 @@ void KMemoryManager::Impl::TrackOptimizedAllocation(KernelCore& kernel, KPhysica
 
 bool KMemoryManager::Impl::ProcessOptimizedAllocation(KernelCore& kernel, KPhysicalAddress block,
                                                       size_t num_pages, u8 fill_pattern) {
+    if (num_pages == 0) {
+        return false;
+    }
     auto& device_memory = kernel.System().DeviceMemory();
     auto optimize_pa = KPageTable::GetHeapPhysicalAddress(kernel, m_management_region);
     auto* optimize_map = device_memory.GetPointer<u64>(optimize_pa);
 
     // We want to return whether any pages were newly allocated.
     bool any_new = false;
+    size_t new_pages = 0;
 
     // Get the range we're processing.
     size_t offset = this->GetPageOffset(block);
-    const size_t last = offset + num_pages - 1;
+    const size_t end = offset + num_pages;
 
     // Process.
-    while (offset <= last) {
+    while (offset < end) {
         // Check if the page has been optimized-allocated before.
         if ((optimize_map[offset / Common::BitSize<u64>()] &
              (u64(1) << (offset % Common::BitSize<u64>()))) == 0) {
             // If not, it's new.
             any_new = true;
 
-            // Fill the page.
-            auto* ptr = device_memory.GetPointer<u8>(m_heap.GetAddress());
-            std::memset(ptr + offset * PageSize, fill_pattern, PageSize);
+            // Coalesce only NEW pages. Previously optimized pages must retain their contents.
+            // The old per-page memset eagerly faulted in the entire newly reserved heap,
+            // bypassing ClearBackingRegion's sparse zero-fill on the main application path.
+            const size_t first = offset++;
+            while (offset < end && (optimize_map[offset / Common::BitSize<u64>()] &
+                                    (u64(1) << (offset % Common::BitSize<u64>()))) == 0) {
+                ++offset;
+            }
+            device_memory.buffer.ClearBackingRegion(
+                GetInteger(m_heap.GetAddress()) - Core::DramMemoryMap::Base + first * PageSize,
+                (offset - first) * PageSize, fill_pattern);
+            new_pages += offset - first;
+            continue;
         }
 
         offset++;
     }
 
-    // Return the number of pages we processed.
+    if (new_pages * PageSize >= 16 * 1024 * 1024) {
+        LOG_WARNING(HW_Memory,
+                    "Optimized guest allocation: initialized {} MiB of {} MiB, "
+                    "fill {} (zero uses sparse backing when enabled)",
+                    new_pages * PageSize / (1024 * 1024), num_pages * PageSize / (1024 * 1024),
+                    fill_pattern);
+    }
+
+    // Return whether any pages were new.
     return any_new;
+}
+
+void KMemoryManager::Impl::DiscardFreedPages(KPhysicalAddress addr, size_t num_pages) {
+    const auto address = GetInteger(addr);
+    if (address < Core::DramMemoryMap::Base) {
+        return;
+    }
+    m_backing->DiscardBackingRegion(address - Core::DramMemoryMap::Base, num_pages * PageSize);
 }
 
 size_t KMemoryManager::Impl::CalculateManagementOverheadSize(size_t region_size) {

@@ -35,7 +35,7 @@ import dev.lemon.lemon_emu.R
 import dev.lemon.lemon_emu.databinding.OverlayCheatPanelBinding
 
 /**
- * "Lemon Cheater": a live memory search/edit panel that floats above the emulation surface.
+ * "Citrosis Cheater": a live memory search/edit panel that floats above the emulation surface.
  *
  * Unlike [InputOverlay], this doesn't cover the whole screen with a single hit-tested View -
  * it's a plain FrameLayout holding one small, draggable card. Touches outside the card's

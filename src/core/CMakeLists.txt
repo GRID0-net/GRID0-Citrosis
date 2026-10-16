@@ -5,6 +5,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 add_library(core STATIC
+    file_sys/private_server_patches.cpp
+    file_sys/private_server_patches.h
+    hle/service/acc/switchnet_account.cpp
+    hle/service/acc/switchnet_account.h
+    hle/service/bcat/backend/grid0_backend.cpp
+    hle/service/bcat/backend/grid0_backend.h
+    hle/service/friend/grid0_friends.cpp
+    hle/service/friend/grid0_friends.h
+    hle/service/sockets/private_server.cpp
+    hle/service/sockets/private_server.h
+    hle/service/sockets/deferred_poll_waker.cpp
+    hle/service/sockets/deferred_poll_waker.h
     arm/arm_interface.cpp
     arm/arm_interface.h
     arm/debug.cpp
@@ -393,8 +405,6 @@ add_library(core STATIC
     hle/service/acc/async_context.cpp
     hle/service/acc/async_context.h
     hle/service/acc/errors.h
-    hle/service/acc/nextendo_id_token.cpp
-    hle/service/acc/nextendo_id_token.h
     hle/service/acc/profile_manager.cpp
     hle/service/acc/profile_manager.h
     hle/service/am/am.cpp
@@ -1284,3 +1294,8 @@ else()
 endif()
 
 create_target_directory_groups(core)
+
+include(GeneratePrivateServerPatches)
+generate_private_server_patches("${CMAKE_CURRENT_SOURCE_DIR}/file_sys/private_server_patches"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/private_server_patches_data.inc")
+target_include_directories(core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

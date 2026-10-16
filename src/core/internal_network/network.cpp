@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -21,9 +22,11 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -76,7 +79,7 @@ SOCKET GetInterruptSocket() {
 }
 
 sockaddr TranslateFromSockAddrIn(SockAddrIn input) {
-    sockaddr_in result;
+    sockaddr_in result{};
 
 #ifdef __unix__
     result.sin_len = sizeof(result);
@@ -203,10 +206,18 @@ void InterruptSocketOperations() {
 }
 
 void AcknowledgeInterrupt() {
-    u8 value = 0;
-    ssize_t ret = read(interrupt_pipe_fd[0], &value, sizeof(value));
-    if (ret != 1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        LOG_ERROR(Network, "Failed to acknowledge interrupt on shutdown");
+    // More than one shutdown/cancellation can signal the pipe. Drain all signals
+    // before the next session, or poll keeps waking for an old cancellation.
+    std::array<u8, 64> values{};
+    for (;;) {
+        const ssize_t ret = read(interrupt_pipe_fd[0], values.data(), values.size());
+        if (ret > 0)
+            continue;
+        if (ret < 0 && errno == EINTR)
+            continue;
+        if (ret < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+            LOG_ERROR(Network, "Failed to acknowledge interrupt on shutdown");
+        break;
     }
 }
 
@@ -215,7 +226,10 @@ SOCKET GetInterruptSocket() {
 }
 
 sockaddr TranslateFromSockAddrIn(SockAddrIn input) {
-    sockaddr_in result;
+    sockaddr_in result{};
+#ifdef __APPLE__
+    result.sin_len = sizeof(result);
+#endif
 
     switch (static_cast<Domain>(input.family)) {
     case Domain::INET:
@@ -735,8 +749,12 @@ u32 IPv4AddressToInteger(IPv4Address ip_addr) {
 }
 
 std::variant<std::vector<AddrInfo>, GetAddrInfoError> GetAddressInfo(
-    const std::string& host, const std::optional<std::string>& service) {
+    const std::string& host, const std::optional<std::string>& service,
+    Type socket_type, Protocol protocol) {
     addrinfo hints{};
+    hints.ai_socktype = TranslateTypeToNative(socket_type);
+    hints.ai_protocol = protocol == Protocol::Unspecified ? 0 :
+                        static_cast<int>(TranslateProtocolToNative(protocol));
     hints.ai_family = AF_INET; // Switch only supports IPv4.
     addrinfo* addrinfo;
     s32 gai_err = getaddrinfo(host.c_str(), service.has_value() ? service->c_str() : nullptr, &hints, &addrinfo);
@@ -813,7 +831,49 @@ Socket::~Socket() {
 
 Socket::Socket(Socket&& rhs) noexcept {
     fd = std::exchange(rhs.fd, INVALID_SOCKET);
+    is_non_blocking = rhs.is_non_blocking;
+    is_datagram = rhs.is_datagram;
 }
+
+namespace {
+// Citrosis LAN steering. When the user picks a network interface (a ZeroTier, Tailscale or GRID0
+// LAN adapter, say), the guest believes that adapter is its only network: NIFM hands it that IP.
+// Two things then go wrong on a host with several adapters, and both are fixed here:
+//  - 255.255.255.255 leaves through the host's default route (Wi-Fi), never reaching the overlay.
+//    It is rewritten to the picked adapter's directed broadcast, which is routed onto it.
+//  - A UDP socket bound to the adapter's own unicast IP never receives broadcasts on Linux and
+//    Android. Such binds are widened to INADDR_ANY; the port is unchanged.
+constexpr IPv4Address LimitedBroadcast{255, 255, 255, 255};
+
+std::optional<IPv4Address> SteeredBroadcastAddress() {
+    const auto iface = GetExplicitNetworkInterface();
+    if (!iface) {
+        return std::nullopt;
+    }
+    in_addr broadcast{};
+    broadcast.s_addr = iface->ip_address.s_addr | ~iface->subnet_mask.s_addr;
+    return TranslateIPv4(broadcast);
+}
+
+SockAddrIn SteerDestination(const SockAddrIn& addr) {
+    if (addr.ip != LimitedBroadcast) {
+        return addr;
+    }
+    const auto broadcast = SteeredBroadcastAddress();
+    if (!broadcast) {
+        return addr;
+    }
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        LOG_INFO(Network, "Steering 255.255.255.255 broadcasts to {} on the picked interface",
+                 IPv4AddressToString(*broadcast));
+    }
+    SockAddrIn steered = addr;
+    steered.ip = *broadcast;
+    return steered;
+}
+} // namespace
 
 template <typename T>
 std::pair<T, Errno> Socket::GetSockOpt(SOCKET fd_so, int option) {
@@ -838,7 +898,9 @@ Errno Socket::SetSockOpt(SOCKET fd_so, int option, T value) {
 }
 
 Errno Socket::Initialize(Domain domain, Type type, Protocol protocol) {
-    fd = socket(TranslateDomainToNative(domain), TranslateTypeToNative(type), TranslateProtocolToNative(protocol));
+    fd = socket(TranslateDomainToNative(domain), TranslateTypeToNative(type),
+                TranslateProtocolToNative(protocol));
+    is_datagram = type == Type::DGRAM;
     if (fd != INVALID_SOCKET) {
         return Errno::SUCCESS;
     }
@@ -885,6 +947,9 @@ std::pair<SocketBase::AcceptResult, Errno> Socket::Accept() {
 }
 
 Errno Socket::Connect(SockAddrIn addr_in) {
+    if (is_datagram) {
+        addr_in = SteerDestination(addr_in);
+    }
     const sockaddr host_addr_in = TranslateFromSockAddrIn(addr_in);
     if (connect(fd, &host_addr_in, sizeof(host_addr_in)) != SOCKET_ERROR) {
         return Errno::SUCCESS;
@@ -914,6 +979,12 @@ std::pair<SockAddrIn, Errno> Socket::GetSockName() {
 }
 
 Errno Socket::Bind(SockAddrIn addr) {
+    if (is_datagram) {
+        if (const auto iface = GetExplicitNetworkInterface();
+            iface && addr.ip == TranslateIPv4(iface->ip_address)) {
+            addr.ip = IPv4Address{};
+        }
+    }
     const sockaddr addr_in = TranslateFromSockAddrIn(addr);
     if (bind(fd, &addr_in, sizeof(addr_in)) != SOCKET_ERROR) {
         return Errno::SUCCESS;
@@ -1013,7 +1084,7 @@ std::pair<s32, Errno> Socket::SendTo(u32 flags, std::span<const u8> message,
     sockaddr host_addr_in;
 
     if (addr) {
-        host_addr_in = TranslateFromSockAddrIn(*addr);
+        host_addr_in = TranslateFromSockAddrIn(is_datagram ? SteerDestination(*addr) : *addr);
         to = &host_addr_in;
     }
 
@@ -1053,6 +1124,34 @@ Errno Socket::SetKeepAlive(bool enable) {
     return SetSockOpt<u32>(fd, SO_KEEPALIVE, enable ? 1 : 0);
 }
 
+Errno Socket::SetNoDelay(bool enable) {
+    const int value = enable ? 1 : 0;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&value),
+                   sizeof(value)) != SOCKET_ERROR) {
+        return Errno::SUCCESS;
+    }
+    return GetAndLogLastError();
+}
+
+Errno Socket::SetIpOption(IpOption option, int value) {
+    const int name = option == IpOption::TTL ? IP_TTL : IP_TOS;
+    if (setsockopt(fd, IPPROTO_IP, name, reinterpret_cast<const char*>(&value), sizeof(value)) !=
+        SOCKET_ERROR) {
+        return Errno::SUCCESS;
+    }
+    return GetAndLogLastError();
+}
+
+std::pair<bool, Errno> Socket::GetNoDelay() {
+    int value = 0;
+    socklen_t len = sizeof(value);
+    if (getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&value), &len) !=
+        SOCKET_ERROR) {
+        return {value != 0, Errno::SUCCESS};
+    }
+    return {false, GetAndLogLastError()};
+}
+
 Errno Socket::SetBroadcast(bool enable) {
     return SetSockOpt<u32>(fd, SO_BROADCAST, enable ? 1 : 0);
 }
@@ -1066,11 +1165,25 @@ Errno Socket::SetRcvBuf(u32 value) {
 }
 
 Errno Socket::SetSndTimeo(u32 value) {
+#ifdef _WIN32
     return SetSockOpt(fd, SO_SNDTIMEO, value);
+#else
+    // Guest/Windows timeout is milliseconds; POSIX sockets require timeval.
+    const timeval timeout{static_cast<time_t>(value / 1000),
+                          static_cast<suseconds_t>((value % 1000) * 1000)};
+    return SetSockOpt(fd, SO_SNDTIMEO, timeout);
+#endif
 }
 
 Errno Socket::SetRcvTimeo(u32 value) {
+#ifdef _WIN32
     return SetSockOpt(fd, SO_RCVTIMEO, value);
+#else
+    // Guest/Windows timeout is milliseconds; POSIX sockets require timeval.
+    const timeval timeout{static_cast<time_t>(value / 1000),
+                          static_cast<suseconds_t>((value % 1000) * 1000)};
+    return SetSockOpt(fd, SO_RCVTIMEO, timeout);
+#endif
 }
 
 Errno Socket::SetNonBlock(bool enable) {

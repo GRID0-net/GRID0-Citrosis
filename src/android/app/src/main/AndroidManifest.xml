@@ -20,6 +20,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.NFC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -62,6 +63,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
         <meta-data android:name="com.oneplus.gamespace.gamebooster" android:value="true" />
         <meta-data android:name="android.game_mode_config" android:resource="@xml/game_mode_config" />
 
+        <activity android:name="dev.lemon.lemon_emu.activities.Grid0FriendsActivity"
+            android:theme="@style/Theme.Lemon.Main" android:exported="false" />
         <activity
             android:name="dev.lemon.lemon_emu.ui.main.MainActivity"
             android:exported="true"

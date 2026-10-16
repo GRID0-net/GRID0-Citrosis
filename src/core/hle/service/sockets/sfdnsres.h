@@ -6,6 +6,11 @@
 
 #pragma once
 
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <optional>
+
 #include "core/hle/service/service.h"
 
 namespace Core {
@@ -14,12 +19,21 @@ class System;
 
 namespace Service::Sockets {
 
+class DeferredPollWaker;
+
 class SFDNSRES final : public ServiceFramework<SFDNSRES> {
 public:
     explicit SFDNSRES(Core::System& system_);
     ~SFDNSRES() override;
+    void SetDeferredPollWaker(std::shared_ptr<DeferredPollWaker> waker);
 
 private:
+    bool DeferNplnStartup(HLERequestContext& ctx);
+    std::shared_ptr<DeferredPollWaker> deferred_poll_waker;
+    std::mutex npln_startup_mutex;
+    std::optional<std::chrono::steady_clock::time_point> npln_startup_deadline;
+    bool npln_startup_released{};
+
     void GetHostByNameRequest(HLERequestContext& ctx);
     void GetGaiStringErrorRequest(HLERequestContext& ctx);
     void GetHostByNameRequestWithOptions(HLERequestContext& ctx);
@@ -30,7 +44,7 @@ private:
     void ResolverSetOptionRequest(HLERequestContext& ctx);
 };
 
-/// Nextendo Network: the Nintendo host whose lookup was redirected to this address, so TLS can
+/// GRID0+: the Nintendo host whose lookup was redirected to this address, so TLS can
 /// still present the right SNI when the game only hands over the address. Empty if none.
 std::string GetRedirectedHostForIp(const std::string& ip);
 

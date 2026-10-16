@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 #include <boost/container/static_vector.hpp>
 
@@ -299,6 +300,22 @@ public:
     /// Helper function to get a span of a buffer using the appropriate buffer descriptor
     [[nodiscard]] std::span<const u8> ReadBuffer(std::size_t buffer_index = 0) const;
 
+    /// Preserve auto-selected inputs across deferred retries, subject to a per-buffer size bound.
+    [[nodiscard]] bool SnapshotReadBuffers(std::size_t max_buffer_size);
+
+    /// Arm a wake only after ServerManager has queued this deferred request.
+    void SetDeferredWakeup(std::function<void()> wakeup) {
+        deferred_wakeup = std::move(wakeup);
+    }
+
+    void NotifyDeferred() {
+        auto wakeup = std::move(deferred_wakeup);
+        deferred_wakeup = {};
+        if (wakeup) {
+            wakeup();
+        }
+    }
+
     /// Helper function to read a copy of a buffer using the appropriate buffer descriptor
     [[nodiscard]] std::vector<u8> ReadBufferCopy(std::size_t buffer_index = 0) const;
 
@@ -442,6 +459,7 @@ private:
     boost::container::static_vector<Kernel::KAutoObject*, IPC::MAX_OUTGOING_COPY_OBJECTS> outgoing_copy_objects;
     boost::container::static_vector<SessionRequestHandlerPtr, IPC::MAX_OUTGOING_DOMAIN_OBJECTS> outgoing_domain_objects;
 
+    std::array<std::optional<std::vector<u8>>, 3> read_buffer_snapshots{};
     mutable std::array<Common::ScratchBuffer<u8>, 3> read_buffer_data_a{};
     mutable std::array<Common::ScratchBuffer<u8>, 3> read_buffer_data_x{};
 
@@ -459,6 +477,7 @@ private:
     u32 data_payload_offset{};
     u32 handles_offset{};
     u32 domain_offset{};
+    std::function<void()> deferred_wakeup;
     bool is_deferred = false;
 };
 

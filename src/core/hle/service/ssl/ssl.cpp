@@ -657,8 +657,8 @@ private:
 
 class ISslService final : public ServiceFramework<ISslService> {
 public:
-    explicit ISslService(Core::System& system_)
-        : ServiceFramework{system_, "ssl"}, cert_store{system} {
+    explicit ISslService(Core::System& system_, std::shared_ptr<CertStore> certificates)
+        : ServiceFramework{system_, "ssl"}, cert_store{std::move(certificates)} {
         // clang-format off
         static const FunctionInfo functions[] = {
             {0, &ISslService::CreateContext, "CreateContext"},
@@ -670,7 +670,7 @@ public:
             {6, nullptr, "FlushSessionCache"},
             {7, nullptr, "SetDebugOption"},
             {8, nullptr, "GetDebugOption"},
-            {8, nullptr, "ClearTls12FallbackFlag"},
+            {9, nullptr, "ClearTls12FallbackFlag"},
         };
         // clang-format on
 
@@ -710,162 +710,403 @@ private:
         Out<u32> out_size, InArray<CaCertificateId, BufferAttr_HipcMapAlias> certificate_ids) {
         LOG_INFO(Service_SSL, "called");
         u32 num_entries;
-        R_RETURN(cert_store.GetCertificateBufSize(out_size, &num_entries, certificate_ids));
+        R_RETURN(cert_store->GetCertificateBufSize(out_size, &num_entries, certificate_ids));
     }
 
     Result GetCertificates(Out<u32> out_num_entries, OutBuffer<BufferAttr_HipcMapAlias> out_buffer,
                            InArray<CaCertificateId, BufferAttr_HipcMapAlias> certificate_ids) {
         LOG_INFO(Service_SSL, "called");
-        R_RETURN(cert_store.GetCertificates(out_num_entries, out_buffer, certificate_ids));
+        R_RETURN(cert_store->GetCertificates(out_num_entries, out_buffer, certificate_ids));
     }
 
 private:
-    CertStore cert_store;
+    std::shared_ptr<CertStore> cert_store;
+};
+
+class ISslContextForSystem final : public ServiceFramework<ISslContextForSystem> {
+public:
+    explicit ISslContextForSystem(Core::System& system_, SslVersion version)
+        : ServiceFramework{system_, "ISslContextForSystem"}, ssl_version{version},
+          shared_data{std::make_shared<SslContextSharedData>()} {
+        // clang-format off
+        static const FunctionInfo functions[] = {
+            {0, &ISslContextForSystem::SetOption, "SetOption"},
+            {1, &ISslContextForSystem::GetOption, "GetOption"},
+            {2, &ISslContextForSystem::CreateConnection, "CreateConnection"},
+            {3, &ISslContextForSystem::GetConnectionCount, "GetConnectionCount"},
+            {4, &ISslContextForSystem::ImportServerPki, "ImportServerPki"},
+            {5, &ISslContextForSystem::ImportClientPki, "ImportClientPki"},
+            {6, &ISslContextForSystem::RemoveServerPki, "RemoveServerPki"},
+            {7, &ISslContextForSystem::RemoveClientPki, "RemoveClientPki"},
+            {8, &ISslContextForSystem::RegisterInternalPki, "RegisterInternalPki"},
+            {9, &ISslContextForSystem::AddPolicyOid, "AddPolicyOid"},
+            {10, &ISslContextForSystem::ImportCrl, "ImportCrl"},
+            {11, &ISslContextForSystem::RemoveCrl, "RemoveCrl"},
+            {12, &ISslContextForSystem::ImportClientCertKeyPki, "ImportClientCertKeyPki"},
+            {13, &ISslContextForSystem::GeneratePrivateKeyAndCert, "GeneratePrivateKeyAndCert"},
+            {14, &ISslContextForSystem::CreateConnectionEx, "CreateConnectionEx"},
+        };
+        // clang-format on
+
+        RegisterHandlers(functions);
+    }
+
+private:
+    SslVersion ssl_version;
+    std::shared_ptr<SslContextSharedData> shared_data;
+
+    void SetOption(HLERequestContext& ctx) {
+        struct Parameters {
+            ContextOption option;
+            s32 value;
+        };
+        static_assert(sizeof(Parameters) == 0x8, "Parameters is an invalid size");
+
+        IPC::RequestParser rp{ctx};
+        const auto parameters = rp.PopRaw<Parameters>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called. option={}, value={}", parameters.option,
+                    parameters.value);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void GetOption(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const auto option = rp.PopEnum<ContextOption>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called. option={}", option);
+
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push<s32>(0); // Stubbed value
+    }
+
+    void CreateConnection(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        std::unique_ptr<SSLConnectionBackend> backend;
+        const Result res = CreateSSLConnectionBackend(&backend);
+
+        IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+        rb.Push(res);
+        if (res == ResultSuccess) {
+            rb.PushIpcInterface<ISslConnection>(ctx, system, ssl_version, shared_data,
+                                            std::move(backend));
+        }
+    }
+
+    void GetConnectionCount(HLERequestContext& ctx) {
+        LOG_DEBUG(Service_SSL, "connection_count={}", shared_data->connection_count);
+
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push(shared_data->connection_count);
+    }
+
+    void ImportServerPki(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const auto certificate_format = rp.PopEnum<CertificateFormat>();
+
+        constexpr u64 server_id = 0;
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, certificate_format={}", certificate_format);
+
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.Push(ResultSuccess);
+        rb.Push(server_id);
+    }
+
+    void ImportClientPki(HLERequestContext& ctx) {
+        constexpr u64 client_id = 0;
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.Push(ResultSuccess);
+        rb.Push(client_id);
+    }
+
+    void RemoveServerPki(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u64 server_id = rp.Pop<u64>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, server_id={}", server_id);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void RemoveClientPki(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u64 client_id = rp.Pop<u64>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, client_id={}", client_id);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void RegisterInternalPki(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u32 internal_pki = rp.Pop<u32>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, internal_pki={}", internal_pki);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void AddPolicyOid(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void ImportCrl(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void RemoveCrl(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void ImportClientCertKeyPki(HLERequestContext& ctx) {
+        constexpr u64 client_id = 0;
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.Push(ResultSuccess);
+        rb.Push(client_id);
+    }
+
+    void GeneratePrivateKeyAndCert(HLERequestContext& ctx) {
+        constexpr u64 client_id = 0;
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 4};
+        rb.Push(ResultSuccess);
+        rb.Push(client_id);
+    }
+
+    void CreateConnectionEx(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        std::unique_ptr<SSLConnectionBackend> backend;
+        const Result res = CreateSSLConnectionBackend(&backend);
+
+        IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+        rb.Push(res);
+        if (res == ResultSuccess) {
+            rb.PushIpcInterface<ISslConnection>(ctx, system, ssl_version, shared_data,
+                                            std::move(backend));
+        }
+    }
 };
 
 class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem> {
-    public:
-        explicit ISslServiceForSystem(Core::System& system_) : ServiceFramework{system_, "ssl:s"} {
-            // clang-format off
-            static const FunctionInfo functions[] = {
-                {0, D<&ISslServiceForSystem::CreateContext>, "CreateContext"},
-                {1, D<&ISslServiceForSystem::GetContextCount>, "GetContextCount"},
-                {2, D<&ISslServiceForSystem::GetCertificates>, "GetCertificates"},
-                {3, D<&ISslServiceForSystem::GetCertificateBufSize>, "GetCertificateBufSize"},
-                {4, D<&ISslServiceForSystem::DebugIoctl>, "DebugIoctl"},
-                {5, D<&ISslServiceForSystem::SetInterfaceVersion>, "SetInterfaceVersion"},
-                {6, D<&ISslServiceForSystem::FlushSessionCache>, "FlushSessionCache"},
-                {7, D<&ISslServiceForSystem::SetDebugOption>, "SetDebugOption"},
-                {8, D<&ISslServiceForSystem::GetDebugOption>, "GetDebugOption"},
-                {9, D<&ISslServiceForSystem::ClearTls12FallbackFlag>, "ClearTls12FallbackFlag"},
-                {100, D<&ISslServiceForSystem::CreateContextForSystem>, "CreateContextForSystem"},
-                {101, D<&ISslServiceForSystem::SetThreadCoreMask>, "SetThreadCoreMask"},
-                {102, D<&ISslServiceForSystem::GetThreadCoreMask>, "GetThreadCoreMask"},
-                {103, D<&ISslServiceForSystem::VerifySignature>, "VerifySignature"}
-            };
-            // clang-format on
-
-            RegisterHandlers(functions);
+public:
+    explicit ISslServiceForSystem(Core::System& system_, std::shared_ptr<CertStore> certificates)
+        : ServiceFramework{system_, "ssl:s"}, cert_store{std::move(certificates)} {
+        // clang-format off
+        static const FunctionInfo functions[] = {
+            // ssl:s is ssl plus system commands from 100 up; 0-9 mean the same on both.
+            // Splatoon 3's NPLN stack opens SSL through ssl:s and asks for the CA
+            // certificates (3, then 2) right after resolving its first gRPC host.
+            // Lemon had the correct command IDs but empty success-only implementations:
+            // neither the certificate buffer size nor the certificates reached the guest.
+            // Adapted from GRID0-citron / citron-nextendo (GPL-3.0-or-later).
+            {0, &ISslServiceForSystem::CreateContext, "CreateContext"},
+            {1, &ISslServiceForSystem::GetContextCount, "GetContextCount"},
+            {2, D<&ISslServiceForSystem::GetCertificates>, "GetCertificates"},
+            {3, D<&ISslServiceForSystem::GetCertificateBufSize>, "GetCertificateBufSize"},
+            {4, nullptr, "DebugIoctl"},
+            {5, &ISslServiceForSystem::SetInterfaceVersion, "SetInterfaceVersion"},
+            {6, &ISslServiceForSystem::FlushSessionCache, "FlushSessionCache"},
+            {7, &ISslServiceForSystem::SetDebugOption, "SetDebugOption"},
+            {8, &ISslServiceForSystem::GetDebugOption, "GetDebugOption"},
+            {9, &ISslServiceForSystem::ClearTls12FallbackFlag, "ClearTls12FallbackFlag"},
+            {100, &ISslServiceForSystem::CreateContextForSystem, "CreateContextForSystem"},
+            {101, &ISslServiceForSystem::SetThreadCoreMask, "SetThreadCoreMask"},
+            {102, &ISslServiceForSystem::GetThreadCoreMask, "GetThreadCoreMask"},
+            {103, &ISslServiceForSystem::VerifySignature, "VerifySignature"},
+            {104, nullptr, "SetCertificateAndPrivateKeyInternal"},
         };
+        // clang-format on
 
-        Result CreateContext() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        RegisterHandlers(functions);
+    }
 
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
+private:
+    void CreateContext(HLERequestContext& ctx) {
+        struct Parameters {
+            SslVersion ssl_version;
+            INSERT_PADDING_BYTES(0x4);
+            u64 pid_placeholder;
         };
+        static_assert(sizeof(Parameters) == 0x10, "Parameters is an invalid size");
 
-        Result GetContextCount() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        IPC::RequestParser rp{ctx};
+        const auto parameters = rp.PopRaw<Parameters>();
 
-            // TODO (jarrodnorwell)
+        LOG_WARNING(Service_SSL, "(STUBBED) called, api_version={}, pid_placeholder={}",
+                    parameters.ssl_version.api_version, parameters.pid_placeholder);
 
-            return ResultSuccess;
+        IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+        rb.Push(ResultSuccess);
+        rb.PushIpcInterface<ISslContext>(ctx, system, parameters.ssl_version);
+    }
+
+    void GetContextCount(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push<u32>(0);
+    }
+
+    Result GetCertificateBufSize(
+        Out<u32> out_size, InArray<CaCertificateId, BufferAttr_HipcMapAlias> certificate_ids) {
+        LOG_INFO(Service_SSL, "called");
+        u32 num_entries;
+        R_RETURN(cert_store->GetCertificateBufSize(out_size, &num_entries, certificate_ids));
+    }
+
+    Result GetCertificates(Out<u32> out_num_entries, OutBuffer<BufferAttr_HipcMapAlias> out_buffer,
+                           InArray<CaCertificateId, BufferAttr_HipcMapAlias> certificate_ids) {
+        LOG_INFO(Service_SSL, "called");
+        R_RETURN(cert_store->GetCertificates(out_num_entries, out_buffer, certificate_ids));
+    }
+
+    void SetDebugOption(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u32 debug_option_type = rp.Pop<u32>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, debug_option_type={}", debug_option_type);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void GetDebugOption(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u32 debug_option_type = rp.Pop<u32>();
+
+        LOG_WARNING(Service_SSL, "(STUBBED) called, debug_option_type={}", debug_option_type);
+
+        std::array<u8, 1> debug_value{0};
+        ctx.WriteBuffer(debug_value);
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void ClearTls12FallbackFlag(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
+
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
+
+    void CreateContextForSystem(HLERequestContext& ctx) {
+        struct Parameters {
+            SslVersion ssl_version;
+            INSERT_PADDING_BYTES(0x4);
+            u64 pid_placeholder;
         };
+        static_assert(sizeof(Parameters) == 0x10, "Parameters is an invalid size");
 
-        Result GetCertificates() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        IPC::RequestParser rp{ctx};
+        const auto parameters = rp.PopRaw<Parameters>();
 
-            // TODO (jarrodnorwell)
+        LOG_WARNING(Service_SSL, "(STUBBED) called, api_version={}, pid_placeholder={}",
+                    parameters.ssl_version.api_version, parameters.pid_placeholder);
 
-            return ResultSuccess;
-        };
+        IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+        rb.Push(ResultSuccess);
+        rb.PushIpcInterface<ISslContextForSystem>(ctx, system, parameters.ssl_version);
+    }
 
-        Result GetCertificateBufSize() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+    void SetThreadCoreMask(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u64 core_mask = rp.Pop<u64>();
+        const u32 core_id = rp.Pop<u32>();
 
-            // TODO (jarrodnorwell)
+        LOG_WARNING(Service_SSL, "(STUBBED) called, core_mask={:016X}, core_id={}", core_mask,
+                    core_id);
 
-            return ResultSuccess;
-        };
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
 
-        Result DebugIoctl() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+    void GetThreadCoreMask(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
 
-            // TODO (jarrodnorwell)
+        constexpr u64 core_mask = 0;
+        constexpr u32 core_id = 0;
 
-            return ResultSuccess;
-        };
+        IPC::ResponseBuilder rb{ctx, 5};
+        rb.Push(ResultSuccess);
+        rb.Push(core_mask);
+        rb.Push(core_id);
+    }
 
-        Result SetInterfaceVersion() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+    void VerifySignature(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
 
-            // TODO (jarrodnorwell)
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
 
-            return ResultSuccess;
-        };
+    void SetInterfaceVersion(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const u32 ssl_version = rp.Pop<u32>();
 
-        Result FlushSessionCache() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        LOG_DEBUG(Service_SSL, "called, ssl_version={}", ssl_version);
 
-            // TODO (jarrodnorwell)
+        IPC::ResponseBuilder rb{ctx, 2};
+        rb.Push(ResultSuccess);
+    }
 
-            return ResultSuccess;
-        };
+    void FlushSessionCache(HLERequestContext& ctx) {
+        LOG_WARNING(Service_SSL, "(STUBBED) called");
 
-        Result SetDebugOption() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
+        IPC::RequestParser rp{ctx};
+        const u32 option_type = rp.Pop<u32>();
 
-            // TODO (jarrodnorwell)
+        // Read the hostname buffer if provided for option_type 0
+        if (option_type == 0 && ctx.CanReadBuffer(0)) {
+            const auto hostname = Common::StringFromBuffer(ctx.ReadBuffer(0));
+            LOG_INFO(Service_SSL, "FlushSessionCache with hostname={}", hostname);
+        }
 
-            return ResultSuccess;
-        };
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push<u32>(0); // Flushed session count, stubbed to 0
+    }
 
-        Result GetDebugOption() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result ClearTls12FallbackFlag() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result CreateContextForSystem() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result SetThreadCoreMask() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetThreadCoreMask() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result VerifySignature() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-    };
+    std::shared_ptr<CertStore> cert_store;
+};
 
 void LoopProcess(Core::System& system) {
     auto server_manager = std::make_unique<ServerManager>(system);
 
-    server_manager->RegisterNamedService("ssl", std::make_shared<ISslService>(system));
-    server_manager->RegisterNamedService("ssl:s", std::make_shared<ISslServiceForSystem>(system));
+    // Both service ports expose the same trust store; avoid duplicating firmware certificates.
+    auto certificates = std::make_shared<CertStore>(system);
+    server_manager->RegisterNamedService("ssl",
+                                        std::make_shared<ISslService>(system, certificates));
+    server_manager->RegisterNamedService("ssl:s",
+                                        std::make_shared<ISslServiceForSystem>(system, certificates));
     ServerManager::RunServer(std::move(server_manager));
 }
 

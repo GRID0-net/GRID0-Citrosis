@@ -13,6 +13,7 @@
 #include "core/hle/kernel/kernel.h"
 #include "core/hle/kernel/physical_core.h"
 #include "core/hle/kernel/svc.h"
+#include "core/hle/service/sockets/private_server.h"
 
 namespace Kernel {
 
@@ -154,7 +155,10 @@ void PhysicalCore::RunThread(KernelCore& kernel, Kernel::KThread* thread) {
             // Perform call. While inside it, the thread's saved context still holds the arguments,
             // not the results (a savestate tells such a thread apart by this flag).
             thread->SetIsCallingSvc();
-            Svc::Call(system, interface->GetSvcNumber());
+            const u32 svc = interface->GetSvcNumber();
+            Service::Sockets::TraceNplnGuestSvc(system, svc, false);
+            Svc::Call(system, svc);
+            Service::Sockets::TraceNplnGuestSvc(system, svc, true);
             thread->ClearIsCallingSvc();
             return;
         }

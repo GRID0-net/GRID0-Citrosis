@@ -34,6 +34,11 @@ import java.util.Locale
 fun Context.getPublicFilesDir(): File = getExternalFilesDir(null) ?: filesDir
 
 class LemonApplication : Application() {
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        NativeLibrary.onTrimMemory(level)
+    }
+
     private fun createNotificationChannels() {
         val name: CharSequence = getString(R.string.app_notification_channel_name)
         val description = getString(R.string.app_notification_channel_description)
@@ -101,6 +106,7 @@ class LemonApplication : Application() {
         GpuDriverHelper.initializeDriverParameters()
         NativeInput.reloadInputDevices()
         NativeLibrary.logDeviceInfo()
+        dev.lemon.lemon_emu.utils.NetworkMonitor.start(this)
         PowerStateUpdater.start()
         Log.logDeviceInfo()
         ControllerNavigationGlobalHook.install(this)

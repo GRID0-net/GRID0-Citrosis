@@ -166,6 +166,14 @@ abstract class SettingsItem(
 
         // List of all general
         val settingsItems = HashMap<String, SettingsItem>().apply {
+            put(StringInputSetting(StringSetting.SWITCHNET_USERNAME, titleId = R.string.grid0_username))
+            put(StringInputSetting(StringSetting.SWITCHNET_PASSWORD, titleId = R.string.grid0_password, isPassword = true))
+            put(StringInputSetting(StringSetting.SWITCHNET_SERVER, titleId = R.string.grid0_login_server))
+            put(StringInputSetting(StringSetting.PRIVATE_SERVER_ADDRESS, titleId = R.string.grid0_redirect_address))
+            put(StringInputSetting(StringSetting.PRIVATE_SERVER_NAT_SECONDARY_ADDRESS, titleId = R.string.grid0_nat_secondary))
+            put(StringInputSetting(StringSetting.PRIVATE_SERVER_CA_BUNDLE, titleId = R.string.grid0_ca_bundle))
+            put(SwitchSetting(BooleanSetting.RECLAIM_GUEST_MEMORY, titleId = R.string.reclaim_guest_memory))
+            put(SwitchSetting(BooleanSetting.FIT_CACHES_TO_RAM, titleId = R.string.fit_caches_to_ram))
             put(StringInputSetting(StringSetting.DEVICE_NAME, titleId = R.string.device_name))
             put(
                 StringInputSetting(
@@ -1170,13 +1178,6 @@ abstract class SettingsItem(
                 )
             )
 
-            put(
-                SwitchSetting(
-                    BooleanSetting.ENABLE_NEXTENDO,
-                    titleId = R.string.nextendo_enable,
-                    descriptionId = R.string.nextendo_enable_description
-                )
-            )
 
             put(
                 SwitchSetting(

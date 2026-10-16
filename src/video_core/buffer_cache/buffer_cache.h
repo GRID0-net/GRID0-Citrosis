@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include "common/memory_budget.h"
 
 #include "common/range_sets.inc"
 #include "shader_recompiler/shader_info.h"
@@ -56,6 +57,11 @@ BufferCache<P>::~BufferCache() = default;
 
 template <class P>
 void BufferCache<P>::RunGarbageCollector() {
+    if (const auto limits = Common::MemoryBudget::GetLimits()) {
+        minimum_memory = limits->buffer_expected;
+        critical_memory = limits->buffer_critical;
+    }
+
     const bool aggressive_gc = total_used_memory >= critical_memory;
     const u64 ticks_to_destroy = aggressive_gc ? 60 : 120;
     int num_iterations = aggressive_gc ? 64 : 32;
@@ -74,6 +80,10 @@ void BufferCache<P>::RunGarbageCollector() {
 
 template <class P>
 void BufferCache<P>::TickFrame() {
+    if (const auto limits = Common::MemoryBudget::GetLimits()) {
+        minimum_memory = limits->buffer_expected;
+        critical_memory = limits->buffer_critical;
+    }
     // Homebrew console apps don't create or bind any channels, so this will be nullptr.
     if (!channel_state) {
         return;
@@ -98,7 +108,7 @@ void BufferCache<P>::TickFrame() {
     channel_state->uniform_buffer_skip_cache_size = skip_preferred ? DEFAULT_SKIP_CACHE_SIZE : 0;
 
     // If we can obtain the memory info, use it instead of the estimate.
-    if (runtime.CanReportMemoryUsage()) {
+    if (!Common::MemoryBudget::GetLimits() && runtime.CanReportMemoryUsage()) {
         total_used_memory = runtime.GetDeviceMemoryUsage();
     }
     if (total_used_memory >= minimum_memory) {

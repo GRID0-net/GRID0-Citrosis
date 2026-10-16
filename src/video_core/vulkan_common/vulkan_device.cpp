@@ -18,18 +18,19 @@
 
 #include <fmt/format.h>
 
+#include <ranges>
 #include "common/assert.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/literals.h"
-#include <ranges>
+#include "common/memory_budget.h"
 #include "common/settings.h"
 #include "common/settings_enums.h"
+#include "video_core/gpu_logging/gpu_logging.h"
 #include "video_core/vulkan_common/nsight_aftermath_tracker.h"
 #include "video_core/vulkan_common/vma.h"
 #include "video_core/vulkan_common/vulkan_device.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
-#include "video_core/gpu_logging/gpu_logging.h"
 
 #if defined(__ANDROID__) && defined(ARCHITECTURE_arm64)
 #include <adrenotools/bcenabler.h>
@@ -748,19 +749,19 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
         flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     }
     const VmaAllocatorCreateInfo allocator_info{
-            .flags = flags,
-            .physicalDevice = physical,
-            .device = *logical,
-            .preferredLargeHeapBlockSize = is_integrated
-                                           ? (64u * 1024u * 1024u)
-                                           : (256u * 1024u * 1024u),
-            .pAllocationCallbacks = nullptr,
-            .pDeviceMemoryCallbacks = nullptr,
-            .pHeapSizeLimit = nullptr,
-            .pVulkanFunctions = &functions,
-            .instance = instance,
-            .vulkanApiVersion = ApiVersion(),
-            .pTypeExternalMemoryHandleTypes = nullptr,
+        .flags = flags,
+        .physicalDevice = physical,
+        .device = *logical,
+        .preferredLargeHeapBlockSize = Common::MemoryBudget::GetLimits() ? (32u * 1024u * 1024u)
+                                       : is_integrated                   ? (64u * 1024u * 1024u)
+                                                                         : (256u * 1024u * 1024u),
+        .pAllocationCallbacks = nullptr,
+        .pDeviceMemoryCallbacks = nullptr,
+        .pHeapSizeLimit = nullptr,
+        .pVulkanFunctions = &functions,
+        .instance = instance,
+        .vulkanApiVersion = ApiVersion(),
+        .pTypeExternalMemoryHandleTypes = nullptr,
     };
 
     vk::Check(vmaCreateAllocator(&allocator_info, &allocator));

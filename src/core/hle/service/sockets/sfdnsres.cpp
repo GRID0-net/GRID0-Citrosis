@@ -4,19 +4,22 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <array>
 #include <mutex>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "common/nextendo_session.h"
 #include "common/settings.h"
 #include "common/string_util.h"
 #include "common/swap.h"
 #include "core/core.h"
 #include "core/hle/service/ipc_helpers.h"
+#include "core/hle/service/sockets/deferred_poll_waker.h"
 #include "core/hle/service/sockets/nsd.h"
+#include "core/hle/service/sockets/private_server.h"
 #include "core/hle/service/sockets/sfdnsres.h"
 #include "core/hle/service/sockets/sockets.h"
 #include "core/hle/service/sockets/sockets_translate.h"
@@ -107,32 +110,13 @@ static bool IsBlockedHost(const std::string& host) {
         [&host](const std::string& domain) { return host.find(domain) != std::string::npos; });
 }
 
-// Nextendo Network: the community servers answer for Nintendo's own hosts (and Demonware, used
-// by the Activision/Blizzard titles), so those lookups resolve to them instead of being blocked.
-// Host rules follow citron-nextendo (Copyright 2026 citron Emulator Project).
-static bool IsHostOrSubdomain(std::string_view host, std::string_view domain) {
-    return host == domain ||
-           (host.size() > domain.size() && host.ends_with(domain) &&
-            host[host.size() - domain.size() - 1] == '.');
-}
-
-static std::optional<std::string> GetNextendoRedirect(const std::string& host) {
-    if (!Common::Nextendo::IsEnabled()) {
-        return std::nullopt;
+// GRID0+ redirects are defined centrally in private_server.cpp.
+static std::optional<std::string> GetGrid0Redirect(const std::string& host) {
+    auto redirect = PrivateServerRedirect(host);
+    if (redirect) {
+        ArmPrivateServerTrace();
     }
-    // The NAT-type check talks to its own responder.
-    if (host.starts_with("nncs2-") && host.ends_with(".n.n.srv.nintendo.net")) {
-        return Settings::values.nextendo_nat_ip.GetValue();
-    }
-    static constexpr std::array<std::string_view, 5> redirected_domains{
-        "nintendo.net", "nintendo.com", "nintendowifi.net", "nintendo.co.jp", "demonware.net",
-    };
-    for (const auto domain : redirected_domains) {
-        if (IsHostOrSubdomain(host, domain)) {
-            return Settings::values.nextendo_server_ip.GetValue();
-        }
-    }
-    return std::nullopt;
+    return redirect;
 }
 
 static std::mutex redirected_hosts_mutex;
@@ -144,22 +128,24 @@ std::string GetRedirectedHostForIp(const std::string& ip) {
     return it != redirected_hosts.end() ? it->second : std::string{};
 }
 
-// Resolves the lookup's host, or the Nextendo server standing in for it. A redirected answer
+// Resolves the lookup's host, or the GRID0+ server standing in for it. A redirected answer
 // keeps the real host as its canonical name: some titles build their requests from it.
 static std::variant<std::vector<Network::AddrInfo>, Network::GetAddrInfoError> ResolveHost(
-    const std::string& host, const std::optional<std::string>& service) {
-    const auto redirect = GetNextendoRedirect(host);
+    const std::string& host, const std::optional<std::string>& service,
+    Network::Type socket_type = Network::Type::Unspecified,
+    Network::Protocol protocol = Network::Protocol::Unspecified) {
+    const auto redirect = GetGrid0Redirect(host);
     if (!redirect) {
-        return Network::GetAddressInfo(host, service);
+        return Network::GetAddressInfo(host, service, socket_type, protocol);
     }
-    auto res_v = Network::GetAddressInfo(*redirect, service);
+    auto res_v = Network::GetAddressInfo(*redirect, service, socket_type, protocol);
     if (auto* res = std::get_if<std::vector<Network::AddrInfo>>(&res_v)) {
         std::scoped_lock lock{redirected_hosts_mutex};
         for (Network::AddrInfo& addrinfo : *res) {
             addrinfo.canon_name = host;
             redirected_hosts[Network::IPv4AddressToString(addrinfo.addr.ip)] = host;
         }
-        LOG_INFO(Network, "Nextendo: '{}' -> {}", host, *redirect);
+        LOG_INFO(Network, "GRID0+: '{}' -> {}", host, *redirect);
     }
     return res_v;
 }
@@ -272,7 +258,7 @@ static std::pair<u32, GetAddrInfoError> GetHostByNameRequestImpl(HLERequestConte
     // For now, ignore options, which are in input buffer 1 for GetHostByNameRequestWithOptions.
 
     // Prevent resolution of Nintendo servers
-    if (!GetNextendoRedirect(host) && IsBlockedHost(host)) {
+    if (!GetGrid0Redirect(host) && IsBlockedHost(host)) {
         LOG_WARNING(Network, "Resolution of hostname {} requested, returning EAI_AGAIN", host);
         return {0, GetAddrInfoError::AGAIN};
     }
@@ -280,7 +266,7 @@ static std::pair<u32, GetAddrInfoError> GetHostByNameRequestImpl(HLERequestConte
     auto res_v = ResolveHost(host, /*service*/ std::nullopt);
     if (auto* res = std::get_if<std::vector<Network::AddrInfo>>(&res_v)) {
         const std::vector<u8> data = SerializeAddrInfoAsHostEnt(*res, host);
-        const u32 data_size = u32(data.size());
+        const u32 data_size = static_cast<u32>(data.size());
         ctx.WriteBuffer(data, 0);
         return {data_size, GetAddrInfoError::SUCCESS};
     }
@@ -327,25 +313,27 @@ void SFDNSRES::GetHostByNameRequestWithOptions(HLERequestContext& ctx) {
 }
 
 static std::vector<u8> SerializeAddrInfo(const std::vector<Network::AddrInfo>& vec,
-                                         std::string_view host) {
+                                         std::string_view host, u32 flags = 0,
+                                         bool ryujinx_ipv4 = false) {
     // Adapted from
     // https://github.com/switchbrew/libnx/blob/c5a9a909a91657a9818a3b7e18c9b91ff0cbb6e3/nx/source/runtime/resolver.c#L190
     std::vector<u8> data;
 
     for (const Network::AddrInfo& addrinfo : vec) {
         // serialized addrinfo:
-        Append<u32_be>(data, 0xBEEFCAFE);                                        // magic
-        Append<u32_be>(data, 0);                                                 // ai_flags
-        Append<u32_be>(data, static_cast<u32>(Translate(addrinfo.family)));      // ai_family
-        Append<u32_be>(data, static_cast<u32>(Translate(addrinfo.socket_type))); // ai_socktype
-        Append<u32_be>(data, static_cast<u32>(Translate(addrinfo.protocol)));    // ai_protocol
-        Append<u32_be>(data, 16); // ai_addrlen
-        // ^ *not* sizeof(SerializedSockAddrIn), not that it matters since they're the same size
+        const u32 wire_type = ryujinx_ipv4 ? 0 : static_cast<u32>(Translate(addrinfo.socket_type));
+        const u32 wire_protocol = ryujinx_ipv4 ? 0 : static_cast<u32>(Translate(addrinfo.protocol));
+        Append<u32_be>(data, 0xBEEFCAFE);                                   // magic
+        Append<u32_be>(data, ryujinx_ipv4 ? 0 : flags);                      // ai_flags
+        Append<u32_be>(data, static_cast<u32>(Translate(addrinfo.family))); // ai_family
+        Append<u32_be>(data, wire_type);                                   // ai_socktype
+        Append<u32_be>(data, wire_protocol);                               // ai_protocol
+        Append<u32_be>(data, sizeof(SockAddrIn));                           // ai_addrlen
 
-        // ai_addr, a BSD sockaddr_in: sin_len comes first. Writing the family as one 16-bit
-        // value left sin_len at 0, and titles that copy this sockaddr into connect() as-is
-        // (Splatoon 3's gRPC stack, per citron-nextendo and Ryujinx-Nextendo) then dial 0.0.0.0.
-        Append<u8>(data, 16);                                                // sin_len
+        // ai_addr is a BSD sockaddr_in: the length and family are separate bytes.
+        // Match GRID0-ryujinx's AddrInfo4 wire representation for Splatoon NPLN:
+        // ai_addrlen remains 16, while the embedded sin_len byte is 4.
+        Append<u8>(data, ryujinx_ipv4 ? 4 : 16);                              // sin_len
         Append<u8>(data, static_cast<u8>(Translate(addrinfo.addr.family))); // sin_family
         // On the Switch, the following fields are passed through htonl despite
         // already being big-endian, so they end up as little-endian.
@@ -368,7 +356,56 @@ static std::vector<u8> SerializeAddrInfo(const std::vector<Network::AddrInfo>& v
     return data;
 }
 
-static std::pair<u32, GetAddrInfoError> GetAddrInfoRequestImpl(HLERequestContext& ctx) {
+void SFDNSRES::SetDeferredPollWaker(std::shared_ptr<DeferredPollWaker> waker) {
+    deferred_poll_waker = std::move(waker);
+}
+
+bool SFDNSRES::DeferNplnStartup(HLERequestContext& ctx) {
+    if (!deferred_poll_waker || PrivateServerAddress().empty() ||
+        system.GetApplicationProcessProgramID() != 0x0100C2500FC20000ULL) {
+        return false;
+    }
+    IPC::RequestParser rp{ctx};
+    const bool use_nsd_resolve = rp.Pop<u8>() != 0;
+    const std::string host = ReadRequestedHost(ctx, use_nsd_resolve);
+    if (host.find(".npln.") == std::string::npos) {
+        return false;
+    }
+
+    std::scoped_lock lock{npln_startup_mutex};
+    if (npln_startup_released) {
+        return false;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!npln_startup_deadline) {
+        // GRID0-ryujinx delays the first NPLN lookup by 2 seconds and then samples JIT
+        // activity every 500 ms. NCE has no equivalent JIT queue: retain that minimum
+        // settling window, without claiming to measure compilation activity here.
+        constexpr auto StartupDelay = std::chrono::milliseconds(2500);
+        npln_startup_deadline = now + StartupDelay;
+        LOG_WARNING(Network, "GRID0+ NPLN startup gate: deferring first lookup of {} for {} ms",
+                    host, StartupDelay.count());
+    }
+    if (now < *npln_startup_deadline) {
+        // Pointer-buffer storage can be reused by other guest threads while this request is
+        // parked. Keep the three resolver inputs owned by its context (at most 12 KiB).
+        if (!ctx.SnapshotReadBuffers(4096)) {
+            LOG_WARNING(Network, "GRID0+ NPLN startup gate: oversized input, resolving immediately");
+            return false;
+        }
+        ctx.SetDeferredWakeup([waker = deferred_poll_waker, deadline = *npln_startup_deadline] {
+            waker->WakeAt(deadline);
+        });
+        ctx.SetIsDeferred();
+        return true;
+    }
+    npln_startup_released = true;
+    LOG_WARNING(Network, "GRID0+ NPLN startup gate: released; resolving {}", host);
+    return false;
+}
+
+static std::pair<u32, GetAddrInfoError> GetAddrInfoRequestImpl(HLERequestContext& ctx,
+                                                               bool splatoon3) {
     struct InputParameters {
         u8 use_nsd_resolve;
         u32 cancel_handle;
@@ -387,7 +424,7 @@ static std::pair<u32, GetAddrInfoError> GetAddrInfoRequestImpl(HLERequestContext
     const std::string host = ReadRequestedHost(ctx, parameters.use_nsd_resolve != 0);
 
     // Prevent resolution of Nintendo servers
-    if (!GetNextendoRedirect(host) && IsBlockedHost(host)) {
+    if (!GetGrid0Redirect(host) && IsBlockedHost(host)) {
         LOG_WARNING(Network, "Resolution of hostname {} requested, returning EAI_AGAIN", host);
         return {0, GetAddrInfoError::AGAIN};
     }
@@ -398,13 +435,133 @@ static std::pair<u32, GetAddrInfoError> GetAddrInfoRequestImpl(HLERequestContext
         service = Common::StringFromBuffer(service_buffer);
     }
 
-    // Serialized hints are also passed in a buffer, but are ignored for now.
-
-    auto res_v = ResolveHost(host, service);
+    // The guest sends a serialized addrinfo header (libnx resolver.c), not a
+    // host-native struct. Keep its transport selection across Android/macOS:
+    // otherwise bionic can return UDP entries to a stream-only gRPC resolver.
+    Network::Type socket_type = Network::Type::Unspecified;
+    Network::Protocol protocol = Network::Protocol::Unspecified;
+    u32 hint_flags = 0;
+    u32 hint_family = 0;
+    u32 hint_type = 0;
+    u32 hint_protocol = 0;
+    if (ctx.CanReadBuffer(2) && ctx.GetReadBufferSize(2) != 0) {
+        const auto hints = ctx.ReadBuffer(2);
+        if (hints.size() < sizeof(u32)) {
+            LOG_ERROR(Network, "Resolver: truncated hints for {} ({} bytes)", host, hints.size());
+            return {0, GetAddrInfoError::BADHINTS};
+        }
+        const auto read_be32 = [&hints](size_t offset) {
+            u32_be value;
+            std::memcpy(&value, hints.data() + offset, sizeof(value));
+            return static_cast<u32>(value);
+        };
+        const u32 magic = read_be32(0);
+        if (magic != 0 && magic != 0xBEEFCAFE) {
+            LOG_ERROR(Network, "Resolver: invalid hints magic {:#x} for {}", magic, host);
+            return {0, GetAddrInfoError::BADHINTS};
+        }
+        if (magic != 0) {
+            if (hints.size() < 24) {
+                LOG_ERROR(Network, "Resolver: truncated addrinfo header for {} ({} bytes)",
+                          host, hints.size());
+                return {0, GetAddrInfoError::BADHINTS};
+            }
+            hint_flags = read_be32(4);
+            hint_family = read_be32(8);
+            hint_type = read_be32(12);
+            hint_protocol = read_be32(16);
+            if (hint_family != 0 && hint_family != static_cast<u32>(Domain::INET)) {
+                LOG_WARNING(Network, "Resolver: unsupported requested family {} for {}", hint_family, host);
+                return {0, GetAddrInfoError::FAMILY};
+            }
+            switch (static_cast<Type>(hint_type)) {
+            case Type::Unspecified: break;
+            case Type::STREAM: socket_type = Network::Type::STREAM; break;
+            case Type::DGRAM: socket_type = Network::Type::DGRAM; break;
+            case Type::RAW: socket_type = Network::Type::RAW; break;
+            case Type::SEQPACKET: socket_type = Network::Type::SEQPACKET; break;
+            default: return {0, GetAddrInfoError::SOCKTYPE};
+            }
+            switch (static_cast<Protocol>(hint_protocol)) {
+            case Protocol::IP: break;
+            case Protocol::TCP: protocol = Network::Protocol::TCP; break;
+            case Protocol::UDP: protocol = Network::Protocol::UDP; break;
+            case Protocol::ICMP: protocol = Network::Protocol::ICMP; break;
+            case Protocol::RAW: protocol = Network::Protocol::RAW; break;
+            default: return {0, GetAddrInfoError::PROTOCOL};
+            }
+        }
+    }
+    const bool trace = PrivateServerRedirect(host).has_value();
+    if (trace) {
+        LOG_WARNING(Network,
+                    "GRID0+ resolver request cmd={} host={} service='{}' hints="
+                    "flags:{:#x} family:{} type:{} protocol:{} output_capacity={}",
+                    static_cast<u32>(ctx.GetCommand()), host, service.value_or(""), hint_flags,
+                    hint_family, hint_type, hint_protocol, ctx.GetWriteBufferSize());
+    }
+    auto res_v = ResolveHost(host, service, socket_type, protocol);
     if (auto* res = std::get_if<std::vector<Network::AddrInfo>>(&res_v)) {
-        const std::vector<u8> data = SerializeAddrInfo(*res, host);
-        const u32 data_size = u32(data.size());
-        ctx.WriteBuffer(data, 0);
+        // The known-working GRID0-ryujinx reply uses Any type/protocol and flags=0.
+        // Keep native resolution filtered by the hints, but match its guest wire profile
+        // only for Splatoon 3's redirected NPLN endpoint. This is a compatibility candidate,
+        // not proof that the guest accepted the previous DNS result after readback.
+        const bool ryujinx_ipv4 = splatoon3 && trace && host.find(".npln.") != std::string::npos;
+        const std::vector<u8> data = SerializeAddrInfo(*res, host, hint_flags, ryujinx_ipv4);
+        const u32 data_size = static_cast<u32>(data.size());
+        if (ryujinx_ipv4) {
+            ArmNplnGuestTrace(ctx.GetThread());
+        }
+        if (res->empty()) {
+            return {0, GetAddrInfoError::NODATA};
+        }
+        if (!ctx.CanWriteBuffer() || data.size() > ctx.GetWriteBufferSize()) {
+            LOG_ERROR(Network, "Resolver: {}-byte reply for {} exceeds output capacity {}",
+                      data.size(), host, ctx.CanWriteBuffer() ? ctx.GetWriteBufferSize() : 0);
+            return {0, GetAddrInfoError::OVERFLOW_};
+        }
+        const size_t written = ctx.WriteBuffer(data, 0);
+        if (written != data.size()) {
+            LOG_ERROR(Network, "Resolver: short write for {} ({}/{})", host, written, data.size());
+            return {0, GetAddrInfoError::FAIL};
+        }
+        if (trace) {
+            for (const auto& entry : *res) {
+                LOG_WARNING(Network,
+                            "GRID0+ resolver entry ip={} port={} family={} type={} protocol={} "
+                            "wire_profile={} wire_flags={} wire_type={} wire_protocol={} "
+                            "wire_addrlen=16 wire_sin_len={}",
+                            Network::IPv4AddressToString(entry.addr.ip), entry.addr.portno,
+                            static_cast<u32>(Translate(entry.family)),
+                            static_cast<u32>(Translate(entry.socket_type)),
+                            static_cast<u32>(Translate(entry.protocol)),
+                            ryujinx_ipv4 ? "ryujinx-ipv4" : "typed-ipv4",
+                            ryujinx_ipv4 ? 0 : hint_flags,
+                            ryujinx_ipv4 ? 0 : static_cast<u32>(Translate(entry.socket_type)),
+                            ryujinx_ipv4 ? 0 : static_cast<u32>(Translate(entry.protocol)),
+                            ryujinx_ipv4 ? 4 : 16);
+            }
+            // A bounded readback distinguishes bad serialization from a guest-memory write
+            // problem, without capturing credentials or retaining an extra reply buffer.
+            // AutoSelect requests retain a zero-length B placeholder when C is active.
+            // Mirror WriteBuffer's selection instead of reading that placeholder at address 0.
+            const bool use_b = !ctx.BufferDescriptorB().empty() &&
+                               ctx.BufferDescriptorB()[0].Size() != 0;
+            const VAddr output_address = use_b ? ctx.BufferDescriptorB()[0].Address()
+                                              : ctx.BufferDescriptorC()[0].Address();
+            std::array<u8, 128> readback{};
+            const size_t count = std::min(readback.size(), data.size());
+            const bool readable = output_address != 0 && ctx.GetMemory().ReadBlockUnsafe(
+                output_address, readback.data(), count);
+            const bool matches = readable && std::equal(
+                readback.begin(), readback.begin() + count, data.begin());
+            LOG_WARNING(Network,
+                        "GRID0+ resolver reply cmd={} bytes={} output={} address={:#x} "
+                        "checked={} readable={} readback_match={} magic={:02x}{:02x}{:02x}{:02x}",
+                        static_cast<u32>(ctx.GetCommand()), written, use_b ? "B" : "C",
+                        output_address, count, readable, matches,
+                        readback[0], readback[1], readback[2], readback[3]);
+        }
         return {data_size, GetAddrInfoError::SUCCESS};
     }
     auto* err = std::get_if<Network::GetAddrInfoError>(&res_v);
@@ -412,7 +569,11 @@ static std::pair<u32, GetAddrInfoError> GetAddrInfoRequestImpl(HLERequestContext
 }
 
 void SFDNSRES::GetAddrInfoRequest(HLERequestContext& ctx) {
-    auto [data_size, emu_gai_err] = GetAddrInfoRequestImpl(ctx);
+    if (DeferNplnStartup(ctx)) {
+        return;
+    }
+    auto [data_size, emu_gai_err] = GetAddrInfoRequestImpl(
+        ctx, system.GetApplicationProcessProgramID() == 0x0100C2500FC20000ULL);
 
     struct OutputParameters {
         Errno bsd_errno;
@@ -421,6 +582,8 @@ void SFDNSRES::GetAddrInfoRequest(HLERequestContext& ctx) {
     };
     static_assert(sizeof(OutputParameters) == 0xc);
 
+    LOG_DEBUG(Network, "Resolver IPC cmd={} gai={} bytes={}",
+              static_cast<u32>(ctx.GetCommand()), static_cast<s32>(emu_gai_err), data_size);
     IPC::ResponseBuilder rb{ctx, 5};
     rb.Push(ResultSuccess);
     rb.PushRaw(OutputParameters{
@@ -445,8 +608,12 @@ void SFDNSRES::GetGaiStringErrorRequest(HLERequestContext& ctx) {
 }
 
 void SFDNSRES::GetAddrInfoRequestWithOptions(HLERequestContext& ctx) {
+    if (DeferNplnStartup(ctx)) {
+        return;
+    }
     // Additional options are ignored
-    auto [data_size, emu_gai_err] = GetAddrInfoRequestImpl(ctx);
+    auto [data_size, emu_gai_err] = GetAddrInfoRequestImpl(
+        ctx, system.GetApplicationProcessProgramID() == 0x0100C2500FC20000ULL);
 
     struct OutputParameters {
         u32 data_size;
@@ -456,6 +623,13 @@ void SFDNSRES::GetAddrInfoRequestWithOptions(HLERequestContext& ctx) {
     };
     static_assert(sizeof(OutputParameters) == 0x10);
 
+    if (!PrivateServerAddress().empty()) {
+        LOG_WARNING(Network,
+                    "GRID0+ resolver completion cmd=12 size={} retval={} host_error={} errno={}",
+                    data_size, static_cast<s32>(emu_gai_err),
+                    static_cast<s32>(GetAddrInfoErrorToNetDbError(emu_gai_err)),
+                    static_cast<u32>(GetAddrInfoErrorToErrno(emu_gai_err)));
+    }
     IPC::ResponseBuilder rb{ctx, 6};
     rb.Push(ResultSuccess);
     rb.PushRaw(OutputParameters{

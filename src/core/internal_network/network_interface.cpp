@@ -35,6 +35,9 @@
 #include <netdb.h>
 #endif
 
+#include <chrono>
+#include <mutex>
+#include <unordered_map>
 #include "common/common_types.h"
 #include "common/logging.h"
 #include "common/settings.h"
@@ -43,6 +46,21 @@
 #include "core/internal_network/network_interface.h"
 
 namespace Network {
+namespace {
+std::mutex gateway_mutex;
+std::unordered_map<std::string, u32> platform_gateways;
+u32 LookupPlatformGateway(const std::string& name) {
+    std::scoped_lock lock{gateway_mutex};
+    const auto it = platform_gateways.find(name);
+    return it == platform_gateways.end() ? 0 : it->second;
+}
+} // namespace
+void SetPlatformGateways(std::vector<std::pair<std::string, u32>> gateways) {
+    std::scoped_lock lock{gateway_mutex};
+    platform_gateways.clear();
+    for (auto& [name, gateway] : gateways)
+        platform_gateways.emplace(std::move(name), gateway);
+}
 
 #ifdef _WIN32
 
@@ -98,6 +116,10 @@ std::vector<Network::NetworkInterface> GetAvailableNetworkInterfaces() {
         });
     }
 
+    for (auto& iface : result) {
+        if (!iface.gateway.s_addr)
+            iface.gateway.s_addr = LookupPlatformGateway(iface.name);
+    }
     return result;
 }
 
@@ -155,6 +177,10 @@ std::vector<Network::NetworkInterface> GetAvailableNetworkInterfaces() {
             .subnet_mask = std::bit_cast<struct sockaddr_in>(*ifa->ifa_netmask).sin_addr,
             .gateway = gw
         });
+    }
+    for (auto& iface : ifaces) {
+        if (!iface.gateway.s_addr)
+            iface.gateway.s_addr = LookupPlatformGateway(iface.name);
     }
     freeifaddrs(ifaddr);
     return ifaces;
@@ -220,25 +246,82 @@ std::vector<Network::NetworkInterface> GetAvailableNetworkInterfaces() {
 
 #endif // _WIN32
 
-std::optional<Network::NetworkInterface> GetSelectedNetworkInterface() {
-    auto const& sel_if = Settings::values.network_interface.GetValue();
-    if (auto const ifaces = Network::GetAvailableNetworkInterfaces(); ifaces.size() > 0) {
-        if (sel_if.empty())
-            return ifaces[0];
-        if (auto const res = std::ranges::find_if(ifaces, [&sel_if](const auto& iface) {
-            return iface.name == sel_if;
-        }); res != ifaces.end())
-            return *res;
+std::optional<NetworkInterface> GetSelectedNetworkInterface() {
+    // If airplane mode is enabled, return no interface (similar to Switch's airplane mode)
+    if (Settings::values.airplane_mode.GetValue()) {
+        return std::nullopt;
+    }
+
+    const auto& selected_network_interface = Settings::values.network_interface.GetValue();
+    const auto network_interfaces = Network::GetAvailableNetworkInterfaces();
+    if (network_interfaces.empty()) {
+        LOG_ERROR(Network, "GetAvailableNetworkInterfaces returned no interfaces");
+        return std::nullopt;
+    }
+
+    // Empty means automatic. Prefer the adapter with the default route rather
+    // than an arbitrary bridge/VPN adapter; explicit selections stay explicit.
+    if (selected_network_interface.empty()) {
+        const auto routed = std::ranges::find_if(
+            network_interfaces, [](const auto& iface) { return iface.gateway.s_addr != 0; });
+        return routed != network_interfaces.end() ? *routed : network_interfaces.front();
+    }
+    if (selected_network_interface == "None")
+        return std::nullopt;
+
+    const auto res =
+        std::ranges::find_if(network_interfaces, [&selected_network_interface](const auto& iface) {
+            return iface.name == selected_network_interface;
+        });
+
+    if (res == network_interfaces.end()) {
         // Only print the error once to avoid log spam
         static bool print_error = true;
         if (print_error) {
-            LOG_WARNING(Network, "Couldn't find interface \"{}\"", sel_if);
+            LOG_ERROR(Network, "Couldn't find selected interface \"{}\"",
+                      selected_network_interface);
             print_error = false;
         }
+
         return std::nullopt;
     }
-    LOG_WARNING(Network, "No interfaces");
-    return std::nullopt;
+
+    // A picked VPN/overlay adapter (ZeroTier, Tailscale, a GRID0 LAN) usually has no default
+    // route. Some games read a zero gateway as "not connected", so report the subnet's first host
+    // instead. Only for explicit picks: automatic selection keeps the real routing picture.
+    NetworkInterface picked = *res;
+    if (picked.gateway.s_addr == 0) {
+        const u32 ip = ntohl(picked.ip_address.s_addr);
+        const u32 mask = ntohl(picked.subnet_mask.s_addr);
+        const u32 first_host = (ip & mask) + 1;
+        if (mask != 0xFFFFFFFFu && first_host != ip) {
+            picked.gateway.s_addr = htonl(first_host);
+        }
+    }
+
+    return picked;
+}
+
+std::optional<NetworkInterface> GetExplicitNetworkInterface() {
+    using Clock = std::chrono::steady_clock;
+    static std::mutex cache_mutex;
+    static Clock::time_point cache_time{};
+    static std::string cache_key;
+    static std::optional<NetworkInterface> cache_value;
+
+    const auto& selected = Settings::values.network_interface.GetValue();
+    if (selected.empty() || selected == "None" || Settings::values.airplane_mode.GetValue()) {
+        return std::nullopt;
+    }
+
+    std::scoped_lock lock{cache_mutex};
+    const auto now = Clock::now();
+    if (cache_key != selected || now - cache_time > std::chrono::seconds(2)) {
+        cache_value = GetSelectedNetworkInterface();
+        cache_key = selected;
+        cache_time = now;
+    }
+    return cache_value;
 }
 
 void SelectFirstNetworkInterface() {

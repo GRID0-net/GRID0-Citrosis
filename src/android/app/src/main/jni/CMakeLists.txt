@@ -7,6 +7,8 @@
 add_library(lemon-android SHARED
     emu_window/emu_window.cpp
     emu_window/emu_window.h
+    citrosis_android.cpp
+    citrosis_android.h
     native.cpp
     native.h
     native_config.cpp
@@ -36,3 +38,5 @@ endif()
 set(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} lemon-android)
 
 target_link_options(lemon-android PRIVATE "-Wl,-Bsymbolic")
+
+target_link_libraries(lemon-android PRIVATE nlohmann_json::nlohmann_json)

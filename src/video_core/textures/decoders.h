@@ -6,7 +6,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <span>
+#include "video_core/surface.h"
 
 #include "common/common_types.h"
 #include "video_core/textures/texture.h"
@@ -32,6 +34,11 @@ void UnswizzleTexture(std::span<u8> output, std::span<const u8> input, u32 bytes
                       u32 stride_alignment = 1);
 
 /// Swizzles linear memory into a block linear texture.
+size_t UnswizzleTextureSanitized(std::span<u8> output, std::span<const u8> input,
+                                 u32 bytes_per_pixel, u32 width, u32 height, u32 depth,
+                                 u32 block_height, u32 block_depth,
+                                 VideoCore::Surface::PixelFormat format, u32 stride_alignment = 1);
+
 void SwizzleTexture(std::span<u8> output, std::span<const u8> input, u32 bytes_per_pixel, u32 width,
                     u32 height, u32 depth, u32 block_height, u32 block_depth,
                     u32 stride_alignment = 1);

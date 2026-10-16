@@ -7,12 +7,11 @@
 #include <algorithm>
 #include <array>
 
+#include <ranges>
 #include "common/common_types.h"
 #include "common/fs/file.h"
 #include "common/fs/path_util.h"
 #include "common/logging.h"
-#include "common/nextendo_session.h"
-#include <ranges>
 #include "common/stb.h"
 #include "common/string_util.h"
 #include "common/swap.h"
@@ -25,11 +24,12 @@
 #include "core/hle/service/acc/acc.h"
 #include "core/hle/service/acc/async_context.h"
 #include "core/hle/service/acc/errors.h"
-#include "core/hle/service/acc/nextendo_id_token.h"
 #include "core/hle/service/acc/profile_manager.h"
+#include "core/hle/service/acc/switchnet_account.h"
 #include "core/hle/service/cmif_serialization.h"
 #include "core/hle/service/glue/glue_manager.h"
 #include "core/hle/service/server_manager.h"
+#include "core/hle/service/sockets/private_server.h"
 #include "core/loader/loader.h"
 
 namespace Service::Account {
@@ -656,6 +656,34 @@ public:
     }
 };
 
+static u32 WriteSwitchNetIdToken(HLERequestContext& ctx) {
+    const std::optional<std::string> token = SwitchNet::GetIdToken();
+    if (!token) {
+        if (Service::Sockets::NetworkDiagnosticsEnabled() || SwitchNet::IsConfigured()) {
+            LOG_WARNING(Service_ACC, "GRID0+: the game asked for its id token and got none; it "
+                                     "will report a sign-in error (2321-4992). See the SwitchNet "
+                                     "login lines above for why.");
+        }
+        return 0;
+    }
+    if (!ctx.CanWriteBuffer() || token->size() > ctx.GetWriteBufferSize()) {
+        LOG_ERROR(Service_ACC, "The SwitchNet id token is {} bytes; the game offered {}",
+                  token->size(), ctx.CanWriteBuffer() ? ctx.GetWriteBufferSize() : 0);
+        return 0;
+    }
+    const auto written = ctx.WriteBuffer(token->data(), token->size());
+    if (written != token->size()) {
+        LOG_ERROR(Service_ACC, "GRID0+: incomplete id token write: {} of {} bytes", written,
+                  token->size());
+        return 0;
+    }
+    if (Service::Sockets::TakePrivateServerTrace()) {
+        LOG_WARNING(Service_ACC, "GRID0+: id token handed to the game ({} bytes, buffer {})",
+                    token->size(), ctx.CanWriteBuffer() ? ctx.GetWriteBufferSize() : 0);
+    }
+    return static_cast<u32>(written);
+}
+
 class EnsureTokenIdCacheAsyncInterface final : public IAsyncContext {
 public:
     explicit EnsureTokenIdCacheAsyncInterface(Core::System& system_) : IAsyncContext{system_} {
@@ -664,9 +692,15 @@ public:
     ~EnsureTokenIdCacheAsyncInterface() = default;
 
     void LoadIdTokenCache(HLERequestContext& ctx) {
-        const std::vector<u8> token = Common::Nextendo::IsEnabled()
-                                          ? Nextendo::GetIdToken(system)
-                                          : std::vector<u8>{};
+        if (SwitchNet::IsConfigured()) {
+            const u32 size = WriteSwitchNetIdToken(ctx);
+            IPC::ResponseBuilder rb{ctx, 3};
+            rb.Push(ResultSuccess);
+            rb.Push(size);
+            return;
+        }
+
+        const std::vector<u8> token{};
         LOG_DEBUG(Service_ACC, "called, token_size={}", token.size());
         if (!token.empty()) {
             ctx.WriteBuffer(token);
@@ -784,11 +818,11 @@ private:
         rb.Push(ResultSuccess);
     }
 
-    // With Nextendo Network on, the games log in with the account's PID. Never log it: the
-    // servers treat it as part of the identity.
+    // GRID0+ supplies the authenticated network account identity.
     u64 NetworkServiceAccountId() const {
-        return Common::Nextendo::IsEnabled() ? Nextendo::GetNetworkServiceAccountId()
-                                             : profile_manager->GetLastOpenedUser().Hash();
+        if (SwitchNet::IsConfigured())
+            return SwitchNet::GetNetworkServiceAccountId().value_or(0);
+        return profile_manager->GetLastOpenedUser().Hash();
     }
 
     void GetAccountId(HLERequestContext& ctx) {
@@ -800,7 +834,8 @@ private:
     }
 
     void EnsureIdTokenCacheAsync(HLERequestContext& ctx) {
-        LOG_WARNING(Service_ACC, "(STUBBED) called");
+        LOG_WARNING(Service_ACC, "EnsureIdTokenCacheAsync: completed context, domain={} header={}",
+                    ctx.GetManager()->IsDomain(), ctx.HasDomainMessageHeader());
 
         IPC::ResponseBuilder rb{ctx, 2, 0, 1};
         rb.Push(ResultSuccess);
@@ -814,7 +849,7 @@ private:
     }
 
     void LoadIdTokenCache(HLERequestContext& ctx) {
-        if (Common::Nextendo::IsEnabled()) {
+        if (SwitchNet::IsConfigured()) {
             ensure_token_id->LoadIdTokenCache(ctx);
             return;
         }
@@ -836,7 +871,7 @@ private:
 
         const u64 account_id = NetworkServiceAccountId();
         std::vector<u8> nas_user_base_for_application(0x68);
-        if (Common::Nextendo::IsEnabled()) {
+        if (SwitchNet::IsConfigured()) {
             std::memcpy(nas_user_base_for_application.data(), &account_id, sizeof(account_id));
         }
         ctx.WriteBuffer(nas_user_base_for_application);

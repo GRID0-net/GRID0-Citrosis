@@ -53,6 +53,12 @@ enum class Errno {
     OTHER,
 };
 
+/// IPPROTO_IP socket options the guest can set, mapped to the host's numbering in network.cpp.
+enum class IpOption {
+    TOS,
+    TTL,
+};
+
 enum class GetAddrInfoError {
     SUCCESS,
     ADDRFAMILY,
@@ -125,6 +131,8 @@ std::string IPv4AddressToString(IPv4Address ip_addr);
 u32 IPv4AddressToInteger(IPv4Address ip_addr);
 
 // named to avoid name collision with Windows macro
-std::variant<std::vector<AddrInfo>, GetAddrInfoError> GetAddressInfo(const std::string& host, const std::optional<std::string>& service);
+std::variant<std::vector<AddrInfo>, GetAddrInfoError> GetAddressInfo(
+    const std::string& host, const std::optional<std::string>& service,
+    Type socket_type = Type::Unspecified, Protocol protocol = Protocol::Unspecified);
 
 } // namespace Network

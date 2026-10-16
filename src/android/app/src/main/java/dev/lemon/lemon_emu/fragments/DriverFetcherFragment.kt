@@ -85,7 +85,7 @@ class DriverFetcherFragment : Fragment() {
 
     private val repoList: List<DriverRepo> = listOf(
         // Lemon's own Turnip build - listed first.
-        DriverRepo("Lemon-Ade Turnip", "Ghael-V/Turnip-Lemon-Ade", 0, false, SortMode.PublishTime),
+        DriverRepo("Citrosis bundled Turnip", "Ghael-V/Turnip-Lemon-Ade", 0, false, SortMode.PublishTime),
         DriverRepo("Mr. Purple Turnip", "MrPurple666/purple-turnip", 1),
         DriverRepo("GameHub Adreno 8xx", "crueter/GameHub-8Elite-Drivers", 2),
         DriverRepo("KIMCHI Turnip", "K11MCH1/AdrenoToolsDrivers", 3, true, SortMode.PublishTime),
@@ -130,7 +130,7 @@ class DriverFetcherFragment : Fragment() {
         IntRange(700, 710) to "KIMCHI 25.2.0_r5",
         IntRange(711, 799) to "Mr. Purple T23",
         // Lemon-Ade is only tested on the Adreno 830 so far; other 8xx keep GameHub.
-        IntRange(830, 830) to "Lemon-Ade Latest",
+        IntRange(830, 830) to "Bundled Turnip Latest",
         IntRange(800, 899) to "GameHub Adreno 8xx",
         IntRange(900, Int.MAX_VALUE) to "Unsupported"
     )

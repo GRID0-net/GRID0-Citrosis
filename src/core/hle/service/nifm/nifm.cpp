@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include "core/core.h"
+#include "core/core_timing.h"
 #include "core/hle/kernel/k_event.h"
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/kernel_helpers.h"
@@ -375,31 +376,54 @@ public:
         event1 = CreateKEvent(service_context, "IRequest:Event1");
         event2 = CreateKEvent(service_context, "IRequest:Event2");
         state = RequestState::NotSubmitted;
+        // Upstream GRID0-citron: NPLN waits on these events without making further IPC
+        // calls. Refresh on CoreTiming rather than allocating a worker for each request.
+        state_poll_event = Core::Timing::CreateEvent(
+            "IRequest::StatePoll",
+            [this](s64, std::chrono::nanoseconds) -> std::optional<std::chrono::nanoseconds> {
+                std::scoped_lock lk{state_lock};
+                ResolveState();
+                return std::nullopt;
+            });
+        system.CoreTiming().ScheduleLoopingEvent(std::chrono::milliseconds(100),
+                                                std::chrono::milliseconds(100), state_poll_event);
     }
 
     ~IRequest() override {
+        system.CoreTiming().UnscheduleEvent(state_poll_event);
         service_context.CloseEvent(event1);
         service_context.CloseEvent(event2);
     }
 
 private:
-    void Submit(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_NIFM, "(STUBBED) called");
-
-        if (state == RequestState::NotSubmitted) {
-            UpdateState(RequestState::OnHold);
+    // Called under state_lock from both IPC and CoreTiming. Keep Lemon's airplane
+    // mode behavior while matching upstream's continuously refreshed request state.
+    RequestState ResolveState() {
+        const auto next = Network::GetHostIPv4Address().has_value() &&
+                                  !Settings::values.airplane_mode.GetValue()
+                              ? RequestState::Accepted
+                              : RequestState::Invalid;
+        if (state != next) {
+            LOG_INFO(Service_NIFM, "Network request state {} -> {}",
+                     static_cast<u32>(state), static_cast<u32>(next));
+            UpdateState(next);
         }
+        return state;
+    }
 
+    void Submit(HLERequestContext& ctx) {
+        std::scoped_lock lk{state_lock};
+        ResolveState();
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(ResultSuccess);
     }
 
     void GetRequestState(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_NIFM, "(STUBBED) called");
-
+        std::scoped_lock lk{state_lock};
+        const auto current = ResolveState();
         IPC::ResponseBuilder rb{ctx, 3};
         rb.Push(ResultSuccess);
-        rb.PushEnum(state);
+        rb.PushEnum(current);
     }
 
     void SetRequirementPreset(HLERequestContext& ctx) {
@@ -427,27 +451,10 @@ private:
     }
 
     void GetResult(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_NIFM, "(STUBBED) called");
-
-        const auto result = [this] {
-            const auto has_connection = Network::GetHostIPv4Address().has_value() &&
-                                        !Settings::values.airplane_mode.GetValue();
-            switch (state) {
-            case RequestState::NotSubmitted:
-                return has_connection ? ResultSuccess : ResultNetworkCommunicationDisabled;
-            case RequestState::OnHold:
-                if (has_connection) {
-                    UpdateState(RequestState::Accepted);
-                } else {
-                    UpdateState(RequestState::Invalid);
-                }
-                return ResultPendingConnection;
-            case RequestState::Accepted:
-            default:
-                return ResultSuccess;
-            }
-        }();
-
+        std::scoped_lock lk{state_lock};
+        const auto result = ResolveState() == RequestState::Accepted
+                                ? ResultSuccess
+                                : ResultNetworkCommunicationDisabled;
         IPC::ResponseBuilder rb{ctx, 2};
         rb.Push(result);
     }
@@ -481,7 +488,7 @@ private:
 
         ctx.WriteBuffer(out_buffer);
 
-        IPC::ResponseBuilder rb{ctx, 6};
+        IPC::ResponseBuilder rb{ctx, 5};
         rb.Push(ResultSuccess);
         rb.Push<u32>(0);
         rb.Push<u32>(0);
@@ -492,6 +499,7 @@ private:
         LOG_DEBUG(Service_NIFM, "(STUBBED) called");
         state = new_state;
         event1->Signal(system.Kernel());
+        event2->Signal(system.Kernel());
     }
 
     KernelHelpers::ServiceContext service_context;
@@ -501,9 +509,8 @@ private:
     Kernel::KEvent* event1;
     Kernel::KEvent* event2;
 
-    std::thread connect_worker;
-    std::atomic<bool> connect_done{false};
-    std::atomic<Result> connect_result{ResultPendingConnection};
+    std::mutex state_lock;
+    std::shared_ptr<Core::Timing::EventType> state_poll_event;
 };
 
 class INetworkProfile final : public ServiceFramework<INetworkProfile> {

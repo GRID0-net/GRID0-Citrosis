@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
+// SPDX-FileCopyrightText: Copyright 2025 citron Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <array>
+#include <cstring>
 #include <queue>
 #include "common/logging.h"
 #include "common/uuid.h"
@@ -12,130 +13,175 @@
 #include "core/hle/service/acc/errors.h"
 #include "core/hle/service/friend/friend.h"
 #include "core/hle/service/friend/friend_interface.h"
+#include "core/hle/service/friend/grid0_friends.h"
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/kernel_helpers.h"
 #include "core/hle/service/server_manager.h"
 
+// [UNITY-FIX] undef Win32 macros shadowing ServiceContext methods.
+#undef CreateEvent
+#undef CreateMutex
+#undef CreateSemaphore
+
 namespace Service::Friend {
+
+namespace {
+
+// nn::friends::detail::FriendImpl.
+constexpr size_t FriendRecordSize = 0x200;
+
+u32 PresenceStatusOf(const Grid0::Friend& f) {
+    if (f.state == "PLAYING") {
+        return 2; // OnlinePlay
+    }
+    return f.state == "ONLINE" ? 1 : 0;
+}
+
+// Builds a friend record: uid 0x00, NSA id 0x10, nickname 0x18 (0x21 bytes), presence 0x40
+// (uid, last-online 0x50, status 0x58, same-application 0x5C, app key-value storage 0x60..0x120),
+// favourite 0x120, valid 0x128.
+std::array<u8, FriendRecordSize> MakeFriendRecord(const Grid0::Friend& f, u64 current_title) {
+    std::array<u8, FriendRecordSize> r{};
+    const u64 uid_hi = 0x1100000000000000ULL;
+    std::memcpy(r.data() + 0x00, &f.nsa_id, 8);
+    std::memcpy(r.data() + 0x08, &uid_hi, 8);
+    std::memcpy(r.data() + 0x10, &f.nsa_id, 8);
+    std::memcpy(r.data() + 0x18, f.nickname.data(), std::min<size_t>(f.nickname.size(), 0x20));
+
+    std::memcpy(r.data() + 0x40, r.data(), 0x10);
+    const s64 last_online = 0x7FFFFFFFFFFFFFFFLL;
+    std::memcpy(r.data() + 0x50, &last_online, 8);
+    const u32 status = PresenceStatusOf(f);
+    std::memcpy(r.data() + 0x58, &status, 4);
+    // A friend in the same game is one the game asks about joining; one in another game is not.
+    u64 friend_title = 0;
+    try {
+        friend_title = f.app_id.empty() ? 0 : std::stoull(f.app_id, nullptr, 16);
+    } catch (...) {
+    }
+    r[0x5C] = status == 2 && friend_title != 0 && friend_title == current_title;
+    std::memcpy(r.data() + 0x60, f.app_field.data(), std::min<size_t>(f.app_field.size(), 0xC0));
+
+    r[0x120] = f.is_favorite;
+    r[0x128] = 1;
+    return r;
+}
+
+} // namespace
 
 class IFriendService final : public ServiceFramework<IFriendService> {
 public:
     explicit IFriendService(Core::System& system_)
         : ServiceFramework{system_, "IFriendService"}, service_context{system, "IFriendService"} {
+        Grid0::NoteRunningTitle(system.GetApplicationProcessProgramID());
         // clang-format off
         static const FunctionInfo functions[] = {
             {0, &IFriendService::GetCompletionEvent, "GetCompletionEvent"},
             {1, &IFriendService::Cancel, "Cancel"},
-            {10100, nullptr, "GetFriendListIds"},
+            {10100, &IFriendService::GetFriendListIds, "GetFriendListIds"},
             {10101, &IFriendService::GetFriendList, "GetFriendList"},
-            {10102, nullptr, "UpdateFriendInfo"},
-            {10110, nullptr, "GetFriendProfileImage"},
-            {10111, nullptr, "GetFriendProfileImageWithImageSize"}, // 18.0.0+
+            {10102, &IFriendService::UpdateFriendInfo, "UpdateFriendInfo"},
+            {10110, &IFriendService::GetFriendProfileImage, "GetFriendProfileImage"},
+            {10111, &IFriendService::GetFriendProfileImageWithImageSize, "GetFriendProfileImageWithImageSize"},
             {10120, &IFriendService::CheckFriendListAvailability, "CheckFriendListAvailability"},
-            {10121, nullptr, "EnsureFriendListAvailable"},
-            {10200, nullptr, "SendFriendRequestForApplication"},
-            {10211, nullptr, "AddFacedFriendRequestForApplication"},
+            {10121, &IFriendService::EnsureFriendListAvailable, "EnsureFriendListAvailable"},
+            {10200, &IFriendService::SendFriendRequestForApplication, "SendFriendRequestForApplication"},
+            {10211, &IFriendService::AddFacedFriendRequestForApplication, "AddFacedFriendRequestForApplication"},
             {10400, &IFriendService::GetBlockedUserListIds, "GetBlockedUserListIds"},
             {10420, &IFriendService::CheckBlockedUserListAvailability, "CheckBlockedUserListAvailability"},
-            {10421, nullptr, "EnsureBlockedUserListAvailable"},
-            {10500, nullptr, "GetProfileList"},
-            {10501, nullptr, "GetProfileListV2"}, // 18.0.0+
-            {10600, nullptr, "DeclareOpenOnlinePlaySession"},
+            {10421, &IFriendService::EnsureBlockedUserListAvailable, "EnsureBlockedUserListAvailable"},
+            {10500, &IFriendService::GetProfileList, "GetProfileList"},
+            {10501, &IFriendService::GetProfileListV2, "GetProfileListV2"},
+            {10600, &IFriendService::DeclareOpenOnlinePlaySession, "DeclareOpenOnlinePlaySession"},
             {10601, &IFriendService::DeclareCloseOnlinePlaySession, "DeclareCloseOnlinePlaySession"},
             {10610, &IFriendService::UpdateUserPresence, "UpdateUserPresence"},
             {10700, &IFriendService::GetPlayHistoryRegistrationKey, "GetPlayHistoryRegistrationKey"},
-            {10701, nullptr, "GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId"},
+            {10701, &IFriendService::GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId, "GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId"},
             {10702, &IFriendService::AddPlayHistory, "AddPlayHistory"},
-            {11000, nullptr, "GetProfileImageUrl"},
-            {11001, nullptr, "GetProfileImageUrlV2"}, // 18.0.0+
+            {11000, &IFriendService::GetProfileImageUrl, "GetProfileImageUrl"},
+            {11001, &IFriendService::GetProfileImageUrlV2, "GetProfileImageUrlV2"},
             {20100, &IFriendService::GetFriendCount, "GetFriendCount"},
             {20101, &IFriendService::GetNewlyFriendCount, "GetNewlyFriendCount"},
-            {20102, nullptr, "GetFriendDetailedInfo"},
-            {20103, nullptr, "SyncFriendList"},
+            {20102, &IFriendService::GetFriendDetailedInfo, "GetFriendDetailedInfo"},
+            {20103, &IFriendService::SyncFriendList, "SyncFriendList"},
             {20104, &IFriendService::RequestSyncFriendList, "RequestSyncFriendList"},
             {20105, &IFriendService::GetFriendListForViewer, "GetFriendListForViewerV1"},
-            {20106, nullptr, "UpdateFriendInfoForViewerV1"},
-            {20107, nullptr, "GetFriendDetailedInfoV2"}, // 20.0.0+
-            {20108, &IFriendService::GetFriendListForViewer, "GetFriendListForViewerV2"}, // 22.0.0+
-            {20109, nullptr, "UpdateFriendInfoForViewerV2"}, // 22.0.0+
-            {20110, nullptr, "LoadFriendSettingV1"},
-            {20111, nullptr, "LoadFriendSettingV2"}, // 22.0.0+
+            {20108, &IFriendService::GetFriendListForViewer, "GetFriendListForViewerV2"},
+            {20106, &IFriendService::UpdateFriendInfoForViewer, "UpdateFriendInfoForViewer"},
+            {20107, &IFriendService::GetFriendDetailedInfoV2, "GetFriendDetailedInfoV2"},
+            {20110, &IFriendService::LoadFriendSetting, "LoadFriendSetting"},
             {20200, &IFriendService::GetReceivedFriendRequestCount, "GetReceivedFriendRequestCount"},
-            {20201, nullptr, "GetFriendRequestListV1"},
-            {20202, nullptr, "GetFriendRequestListV2"}, // 20.0.0+
-            {20203, nullptr, "GetFriendRequestReceivedNotificationCount"}, // 22.0.0+
-            {20300, nullptr, "GetFriendCandidateList"},
-            {20301, nullptr, "GetNintendoNetworkIdInfo"},
-            {20302, nullptr, "GetSnsAccountLinkage"}, // 5.0.0-19.0.1
-            {20303, nullptr, "GetSnsAccountProfile"}, // 5.0.0-19.0.1
-            {20304, nullptr, "GetSnsAccountFriendList"}, // 5.0.0-19.0.1
-            {20400, nullptr, "GetBlockedUserListV1"},
-            {20401, nullptr, "SyncBlockedUserList"},
-            {20402, nullptr, "GetBlockedUserListV2"}, // 20.0.0+
-            {20500, nullptr, "GetProfileExtraListV1"},
-            {20501, nullptr, "GetRelationship"},
-            {20502, nullptr, "GetProfileExtraListV2"}, // 19.0.0+
-            {20600, &IFriendService::GetUserPresenceView, "GetUserPresenceViewV1"},
-            {20601, &IFriendService::GetUserPresenceView, "GetUserPresenceViewV2"}, // 19.0.0+
-            {20700, nullptr, "GetPlayHistoryListV1"},
+            {20201, &IFriendService::GetFriendRequestList, "GetFriendRequestList"},
+            {20202, &IFriendService::GetFriendRequestListV2, "GetFriendRequestListV2"},
+            {20300, &IFriendService::GetFriendCandidateList, "GetFriendCandidateList"},
+            {20301, &IFriendService::GetNintendoNetworkIdInfo, "GetNintendoNetworkIdInfo"},
+            {20302, &IFriendService::GetSnsAccountLinkage, "GetSnsAccountLinkage"},
+            {20303, &IFriendService::GetSnsAccountProfile, "GetSnsAccountProfile"},
+            {20304, &IFriendService::GetSnsAccountFriendList, "GetSnsAccountFriendList"},
+            {20400, &IFriendService::GetBlockedUserList, "GetBlockedUserList"},
+            {20401, &IFriendService::SyncBlockedUserList, "SyncBlockedUserList"},
+            {20402, &IFriendService::GetBlockedUserListV2, "GetBlockedUserListV2"},
+            {20500, &IFriendService::GetProfileExtraList, "GetProfileExtraList"},
+            {20501, &IFriendService::GetRelationship, "GetRelationship"},
+            {20502, &IFriendService::GetProfileExtraListV2, "GetProfileExtraListV2"},
+            {20600, &IFriendService::GetUserPresenceView, "GetUserPresenceView"},
+            {20601, &IFriendService::GetUserPresenceViewV2, "GetUserPresenceViewV2"},
+            {20700, &IFriendService::GetPlayHistoryList, "GetPlayHistoryList"},
             {20701, &IFriendService::GetPlayHistoryStatistics, "GetPlayHistoryStatistics"},
-            {20702, nullptr, "GetPlayHistoryListV2"}, // 19.0.0+
-            {20800, &IFriendService::LoadUserSetting, "LoadUserSettingV1"},
-            {20801, nullptr, "SyncUserSetting"},
-            {20802, &IFriendService::LoadUserSetting, "LoadUserSettingV2"}, // 19.0.0+
+            {20702, &IFriendService::GetPlayHistoryListV2, "GetPlayHistoryListV2"},
+            {20800, &IFriendService::LoadUserSetting, "LoadUserSetting"},
+            {20801, &IFriendService::SyncUserSetting, "SyncUserSetting"},
+            {20802, &IFriendService::LoadUserSettingV2, "LoadUserSettingV2"},
             {20900, &IFriendService::RequestListSummaryOverlayNotification, "RequestListSummaryOverlayNotification"},
-            {21000, nullptr, "GetExternalApplicationCatalog"},
-            {22000, nullptr, "GetReceivedFriendInvitationListV1"},
-            {22001, nullptr, "GetReceivedFriendInvitationDetailedInfoV1"},
-            {22002, nullptr, "GetReceivedFriendInvitationListV2"}, // 19.0.0+
-            {22003, nullptr, "GetReceivedFriendInvitationDetailedInfoV2"}, // 19.0.0+
+            {21000, &IFriendService::GetExternalApplicationCatalog, "GetExternalApplicationCatalog"},
+            {22000, &IFriendService::GetReceivedFriendInvitationList, "GetReceivedFriendInvitationList"},
+            {22001, &IFriendService::GetReceivedFriendInvitationDetailedInfo, "GetReceivedFriendInvitationDetailedInfo"},
+            {22002, &IFriendService::GetReceivedFriendInvitationListV2, "GetReceivedFriendInvitationListV2"},
+            {22003, &IFriendService::GetReceivedFriendInvitationDetailedInfoV2, "GetReceivedFriendInvitationDetailedInfoV2"},
             {22010, &IFriendService::GetReceivedFriendInvitationCountCache, "GetReceivedFriendInvitationCountCache"},
-            {30100, nullptr, "DropFriendNewlyFlags"},
-            {30101, nullptr, "DeleteFriend"},
-            {30110, nullptr, "DropFriendNewlyFlag"},
-            {30120, nullptr, "ChangeFriendFavoriteFlag"},
-            {30121, nullptr, "ChangeFriendOnlineNotificationFlag"},
-            {30130, nullptr, "SetFriendNote"}, // 22.0.0+
-            {30131, nullptr, "RequestUploadPendingNote"}, // 22.0.0+
-            {30190, nullptr, "RequestSyncLocalUpdates"}, // 22.0.0+
-            {30200, nullptr, "SendFriendRequest"},
-            {30201, nullptr, "SendFriendRequestWithApplicationInfoV1"},
-            {30202, nullptr, "CancelFriendRequest"},
-            {30203, nullptr, "AcceptFriendRequest"},
-            {30204, nullptr, "RejectFriendRequest"},
-            {30205, nullptr, "ReadFriendRequest"},
-            {30210, nullptr, "GetFacedFriendRequestRegistrationKey"},
-            {30211, nullptr, "AddFacedFriendRequest"},
-            {30212, nullptr, "CancelFacedFriendRequest"},
-            {30213, nullptr, "GetFacedFriendRequestProfileImage"},
-            {30214, nullptr, "GetFacedFriendRequestProfileImageFromPath"},
-            {30215, nullptr, "SendFriendRequestWithExternalApplicationCatalogId"},
-            {30216, nullptr, "ResendFacedFriendRequest"},
-            {30217, nullptr, "SendFriendRequestWithNintendoNetworkIdInfo"},
-            {30218, nullptr, "SendFriendRequestWithApplicationInfoV2"}, // 20.0.0+
-            {30300, nullptr, "GetSnsAccountLinkPageUrl"}, // 5.0.0-19.0.1
-            {30301, nullptr, "UnlinkSnsAccount"}, // 5.0.0-19.0.1
-            {30400, nullptr, "BlockUser"},
-            {30401, nullptr, "BlockUserWithApplicationInfoV1"},
-            {30402, nullptr, "UnblockUser"},
-            {30403, nullptr, "BlockUserWithApplicationInfoV2"}, // 20.0.0+
-            {30500, nullptr, "GetProfileExtraFromFriendCodeV1"},
-            {30501, nullptr, "GetProfileExtraFromFriendCodeV2"}, // 19.0.0+
-            {30700, nullptr, "DeletePlayHistory"},
-            {30701, nullptr, "AddPlayHistoryWithApplication"}, // 19.0.0+
-            {30810, nullptr, "ChangePresencePermission"},
-            {30811, nullptr, "ChangeFriendRequestReception"},
-            {30812, nullptr, "ChangePlayLogPermission"},
-            {30820, nullptr, "IssueFriendCode"},
-            {30830, nullptr, "ClearPlayLog"},
-            {30900, nullptr, "SendFriendInvitationV1"},
-            {30901, nullptr, "SendFriendInvitationV2"}, // 19.0.0+
-            {30910, nullptr, "ReadFriendInvitation"},
-            {30911, nullptr, "ReadAllFriendInvitations"},
-            {31000, nullptr, "OpenUser"}, // 19.0.0+
-            {40100, nullptr, "DeleteFriendListCache"},
-            {40400, nullptr, "DeleteBlockedUserListCache"},
-            {49900, nullptr, "DeleteNetworkServiceAccountCache"},
+            {30100, &IFriendService::DropFriendNewlyFlags, "DropFriendNewlyFlags"},
+            {30101, &IFriendService::DeleteFriend, "DeleteFriend"},
+            {30110, &IFriendService::DropFriendNewlyFlag, "DropFriendNewlyFlag"},
+            {30120, &IFriendService::ChangeFriendFavoriteFlag, "ChangeFriendFavoriteFlag"},
+            {30121, &IFriendService::ChangeFriendOnlineNotificationFlag, "ChangeFriendOnlineNotificationFlag"},
+            {30200, &IFriendService::SendFriendRequest, "SendFriendRequest"},
+            {30201, &IFriendService::SendFriendRequestWithApplicationInfo, "SendFriendRequestWithApplicationInfo"},
+            {30202, &IFriendService::CancelFriendRequest, "CancelFriendRequest"},
+            {30203, &IFriendService::AcceptFriendRequest, "AcceptFriendRequest"},
+            {30204, &IFriendService::RejectFriendRequest, "RejectFriendRequest"},
+            {30205, &IFriendService::ReadFriendRequest, "ReadFriendRequest"},
+            {30210, &IFriendService::GetFacedFriendRequestRegistrationKey, "GetFacedFriendRequestRegistrationKey"},
+            {30211, &IFriendService::AddFacedFriendRequest, "AddFacedFriendRequest"},
+            {30212, &IFriendService::CancelFacedFriendRequest, "CancelFacedFriendRequest"},
+            {30213, &IFriendService::GetFacedFriendRequestProfileImage, "GetFacedFriendRequestProfileImage"},
+            {30214, &IFriendService::GetFacedFriendRequestProfileImageFromPath, "GetFacedFriendRequestProfileImageFromPath"},
+            {30215, &IFriendService::SendFriendRequestWithExternalApplicationCatalogId, "SendFriendRequestWithExternalApplicationCatalogId"},
+            {30216, &IFriendService::ResendFacedFriendRequest, "ResendFacedFriendRequest"},
+            {30217, &IFriendService::SendFriendRequestWithNintendoNetworkIdInfo, "SendFriendRequestWithNintendoNetworkIdInfo"},
+            {30218, &IFriendService::SendFriendRequestWithApplicationInfoV2, "SendFriendRequestWithApplicationInfoV2"},
+            {30300, &IFriendService::GetSnsAccountLinkPageUrl, "GetSnsAccountLinkPageUrl"},
+            {30301, &IFriendService::UnlinkSnsAccount, "UnlinkSnsAccount"},
+            {30400, &IFriendService::BlockUser, "BlockUser"},
+            {30401, &IFriendService::BlockUserWithApplicationInfo, "BlockUserWithApplicationInfo"},
+            {30402, &IFriendService::UnblockUser, "UnblockUser"},
+            {30403, &IFriendService::BlockUserWithApplicationInfoV2, "BlockUserWithApplicationInfoV2"},
+            {30500, &IFriendService::GetProfileExtraFromFriendCode, "GetProfileExtraFromFriendCode"},
+            {30501, &IFriendService::GetProfileExtraFromFriendCodeV2, "GetProfileExtraFromFriendCodeV2"},
+            {30700, &IFriendService::DeletePlayHistory, "DeletePlayHistory"},
+            {30701, &IFriendService::AddPlayHistoryWithApplication, "AddPlayHistoryWithApplication"},
+            {30810, &IFriendService::ChangePresencePermission, "ChangePresencePermission"},
+            {30811, &IFriendService::ChangeFriendRequestReception, "ChangeFriendRequestReception"},
+            {30812, &IFriendService::ChangePlayLogPermission, "ChangePlayLogPermission"},
+            {30820, &IFriendService::IssueFriendCode, "IssueFriendCode"},
+            {30830, &IFriendService::ClearPlayLog, "ClearPlayLog"},
+            {30900, &IFriendService::SendFriendInvitation, "SendFriendInvitation"},
+            {30901, &IFriendService::SendFriendInvitationV2, "SendFriendInvitationV2"},
+            {30910, &IFriendService::ReadFriendInvitation, "ReadFriendInvitation"},
+            {30911, &IFriendService::ReadAllFriendInvitations, "ReadAllFriendInvitations"},
+            {31000, &IFriendService::OpenUser, "OpenUser"},
+            {40100, &IFriendService::DeleteFriendListCache, "DeleteFriendListCache"},
+            {40400, &IFriendService::DeleteBlockedUserListCache, "DeleteBlockedUserListCache"},
+            {49900, &IFriendService::DeleteNetworkServiceAccountCache, "DeleteNetworkServiceAccountCache"},
         };
         // clang-format on
 
@@ -145,10 +191,174 @@ public:
     }
 
     ~IFriendService() override {
+        // nnSdk closes an async session only after storing its result.
+        LOG_DEBUG(Service_Friend, "IFriendService closed: async={} requests={}", is_async_session,
+                  handled_requests);
+        if (is_async_session) {
+            LOG_DEBUG(Service_Friend, "signalling completion on async session close");
+            completion_event->Signal(system.Kernel());
+        }
         service_context.CloseEvent(completion_event);
     }
 
+    // The SDK's AsyncContext (nn::friends::EnsureFriendListAvailable and the
+    // other async calls) waits on this event before reading a result. Every
+    // command here answers synchronously, so signal it after each one; never
+    // signalling it left Splatoon 3 waiting forever and never asking for the
+    // friend list. Same approach as citron-nextendo.
+    Result HandleSyncRequest(Kernel::KServerSession& session, HLERequestContext& context) override {
+        const Result result = ServiceFrameworkBase::HandleSyncRequest(session, context);
+        if (!is_async_session) {
+            LOG_DEBUG(Service_Friend, "signalling completion after command {}",
+                      context.GetCommand());
+            completion_event->Signal(system.Kernel());
+        }
+        ++handled_requests;
+        return result;
+    }
+
+    void GetCompletionEvent(HLERequestContext& ctx) {
+        LOG_DEBUG(Service_Friend, "GetCompletionEvent called");
+        // AsyncContextInternal opens a fresh session and asks for this first.
+        if (handled_requests == 0) {
+            is_async_session = true;
+        }
+        IPC::ResponseBuilder rb{ctx, 2, 1};
+        rb.Push(ResultSuccess);
+        rb.PushCopyObjects(ctx, completion_event->GetReadableEvent());
+    }
+
+    void GetFriendListIds(HLERequestContext& ctx) {
+        IPC::RequestParser rp{ctx};
+        const auto offset = rp.Pop<u32>();
+        // A game asks once, early (Splatoon 3 at boot), and keeps what it got for the whole
+        // session; a short, bounded wait for the first fetch beats an empty list forever.
+        const auto friends = Grid0::GetWarm(std::chrono::milliseconds(2000));
+        const size_t capacity = ctx.GetWriteBufferNumElements<u64>();
+        std::vector<u64> ids;
+        for (size_t i = offset; i < friends.size() && ids.size() < capacity; ++i) {
+            ids.push_back(friends[i].nsa_id);
+        }
+        if (!ids.empty()) {
+            ctx.WriteBuffer(ids);
+        }
+        LOG_INFO(Service_Friend, "GetFriendListIds offset={} -> {}", offset, ids.size());
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push<u32>(static_cast<u32>(ids.size()));
+    }
+
+    void GetReceivedFriendInvitationCountCache(HLERequestContext& ctx) {
+        LOG_DEBUG(Service_Friend, "(STUBBED) GetReceivedFriendInvitationCountCache called");
+        IPC::ResponseBuilder rb{ctx, 3};
+        rb.Push(ResultSuccess);
+        rb.Push(0);
+    }
+
 private:
+    void GetFriendList(HLERequestContext& ctx);
+    void CheckFriendListAvailability(HLERequestContext& ctx);
+    void GetBlockedUserListIds(HLERequestContext& ctx);
+    void CheckBlockedUserListAvailability(HLERequestContext& ctx);
+    void DeclareCloseOnlinePlaySession(HLERequestContext& ctx);
+    void UpdateUserPresence(HLERequestContext& ctx);
+    void GetPlayHistoryRegistrationKey(HLERequestContext& ctx);
+    void GetFriendCount(HLERequestContext& ctx);
+    void GetNewlyFriendCount(HLERequestContext& ctx);
+    void GetReceivedFriendRequestCount(HLERequestContext& ctx);
+    void GetPlayHistoryStatistics(HLERequestContext& ctx);
+    void Cancel(HLERequestContext& ctx);
+    void UpdateFriendInfo(HLERequestContext& ctx);
+    void GetFriendProfileImage(HLERequestContext& ctx);
+    void GetFriendProfileImageWithImageSize(HLERequestContext& ctx);
+    void EnsureFriendListAvailable(HLERequestContext& ctx);
+    void SendFriendRequestForApplication(HLERequestContext& ctx);
+    void AddFacedFriendRequestForApplication(HLERequestContext& ctx);
+    void EnsureBlockedUserListAvailable(HLERequestContext& ctx);
+    void GetProfileList(HLERequestContext& ctx);
+    void GetProfileListV2(HLERequestContext& ctx);
+    void DeclareOpenOnlinePlaySession(HLERequestContext& ctx);
+    void GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId(HLERequestContext& ctx);
+    void AddPlayHistory(HLERequestContext& ctx);
+    void GetProfileImageUrl(HLERequestContext& ctx);
+    void GetProfileImageUrlV2(HLERequestContext& ctx);
+    void GetFriendDetailedInfo(HLERequestContext& ctx);
+    void SyncFriendList(HLERequestContext& ctx);
+    void RequestSyncFriendList(HLERequestContext& ctx);
+    void GetFriendListForViewer(HLERequestContext& ctx);
+    void UpdateFriendInfoForViewer(HLERequestContext& ctx);
+    void GetFriendDetailedInfoV2(HLERequestContext& ctx);
+    void LoadFriendSetting(HLERequestContext& ctx);
+    void GetFriendRequestList(HLERequestContext& ctx);
+    void GetFriendRequestListV2(HLERequestContext& ctx);
+    void GetFriendCandidateList(HLERequestContext& ctx);
+    void GetNintendoNetworkIdInfo(HLERequestContext& ctx);
+    void GetSnsAccountLinkage(HLERequestContext& ctx);
+    void GetSnsAccountProfile(HLERequestContext& ctx);
+    void GetSnsAccountFriendList(HLERequestContext& ctx);
+    void GetBlockedUserList(HLERequestContext& ctx);
+    void SyncBlockedUserList(HLERequestContext& ctx);
+    void GetBlockedUserListV2(HLERequestContext& ctx);
+    void GetProfileExtraList(HLERequestContext& ctx);
+    void GetRelationship(HLERequestContext& ctx);
+    void GetProfileExtraListV2(HLERequestContext& ctx);
+    void GetUserPresenceView(HLERequestContext& ctx);
+    void GetUserPresenceViewV2(HLERequestContext& ctx);
+    void GetPlayHistoryList(HLERequestContext& ctx);
+    void GetPlayHistoryListV2(HLERequestContext& ctx);
+    void LoadUserSetting(HLERequestContext& ctx);
+    void SyncUserSetting(HLERequestContext& ctx);
+    void LoadUserSettingV2(HLERequestContext& ctx);
+    void RequestListSummaryOverlayNotification(HLERequestContext& ctx);
+    void GetExternalApplicationCatalog(HLERequestContext& ctx);
+    void GetReceivedFriendInvitationList(HLERequestContext& ctx);
+    void GetReceivedFriendInvitationDetailedInfo(HLERequestContext& ctx);
+    void GetReceivedFriendInvitationListV2(HLERequestContext& ctx);
+    void GetReceivedFriendInvitationDetailedInfoV2(HLERequestContext& ctx);
+    void DropFriendNewlyFlags(HLERequestContext& ctx);
+    void DeleteFriend(HLERequestContext& ctx);
+    void DropFriendNewlyFlag(HLERequestContext& ctx);
+    void ChangeFriendFavoriteFlag(HLERequestContext& ctx);
+    void ChangeFriendOnlineNotificationFlag(HLERequestContext& ctx);
+    void SendFriendRequest(HLERequestContext& ctx);
+    void SendFriendRequestWithApplicationInfo(HLERequestContext& ctx);
+    void CancelFriendRequest(HLERequestContext& ctx);
+    void AcceptFriendRequest(HLERequestContext& ctx);
+    void RejectFriendRequest(HLERequestContext& ctx);
+    void ReadFriendRequest(HLERequestContext& ctx);
+    void GetFacedFriendRequestRegistrationKey(HLERequestContext& ctx);
+    void AddFacedFriendRequest(HLERequestContext& ctx);
+    void CancelFacedFriendRequest(HLERequestContext& ctx);
+    void GetFacedFriendRequestProfileImage(HLERequestContext& ctx);
+    void GetFacedFriendRequestProfileImageFromPath(HLERequestContext& ctx);
+    void SendFriendRequestWithExternalApplicationCatalogId(HLERequestContext& ctx);
+    void ResendFacedFriendRequest(HLERequestContext& ctx);
+    void SendFriendRequestWithNintendoNetworkIdInfo(HLERequestContext& ctx);
+    void SendFriendRequestWithApplicationInfoV2(HLERequestContext& ctx);
+    void GetSnsAccountLinkPageUrl(HLERequestContext& ctx);
+    void UnlinkSnsAccount(HLERequestContext& ctx);
+    void BlockUser(HLERequestContext& ctx);
+    void BlockUserWithApplicationInfo(HLERequestContext& ctx);
+    void UnblockUser(HLERequestContext& ctx);
+    void BlockUserWithApplicationInfoV2(HLERequestContext& ctx);
+    void GetProfileExtraFromFriendCode(HLERequestContext& ctx);
+    void GetProfileExtraFromFriendCodeV2(HLERequestContext& ctx);
+    void DeletePlayHistory(HLERequestContext& ctx);
+    void AddPlayHistoryWithApplication(HLERequestContext& ctx);
+    void ChangePresencePermission(HLERequestContext& ctx);
+    void ChangeFriendRequestReception(HLERequestContext& ctx);
+    void ChangePlayLogPermission(HLERequestContext& ctx);
+    void IssueFriendCode(HLERequestContext& ctx);
+    void ClearPlayLog(HLERequestContext& ctx);
+    void SendFriendInvitation(HLERequestContext& ctx);
+    void SendFriendInvitationV2(HLERequestContext& ctx);
+    void ReadFriendInvitation(HLERequestContext& ctx);
+    void ReadAllFriendInvitations(HLERequestContext& ctx);
+    void OpenUser(HLERequestContext& ctx);
+    void DeleteFriendListCache(HLERequestContext& ctx);
+    void DeleteBlockedUserListCache(HLERequestContext& ctx);
+    void DeleteNetworkServiceAccountCache(HLERequestContext& ctx);
+
     enum class PresenceFilter : u32 {
         None = 0,
         Online = 1,
@@ -166,217 +376,10 @@ private:
     };
     static_assert(sizeof(SizedFriendFilter) == 0x10, "SizedFriendFilter is an invalid size");
 
-    struct FriendsUserSetting {
-        Common::UUID uuid;
-        u32 presence_permission;
-        u32 play_log_permission;
-        u64 friend_request_reception;
-        char friend_code[0x20];
-        u64 friend_code_next_issuable_time;
-        u8 unk_x48[0x7B8];
-    };
-    static_assert(sizeof(FriendsUserSetting) == 0x800, "FriendsUserSetting is an invalid size");
-
-    void GetCompletionEvent(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "called");
-
-        auto& readable_event = completion_event->GetReadableEvent();
-
-        IPC::ResponseBuilder rb{ctx, 2, 1};
-        rb.Push(readable_event.Signal(system.Kernel()));
-        rb.PushCopyObjects(ctx, readable_event);
-    }
-
-    void Cancel(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called.");
-
-        // TODO (jarrodnorwell)
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetFriendList(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto friend_offset = rp.Pop<u32>();
-        const auto uuid = rp.PopRaw<Common::UUID>();
-        [[maybe_unused]] const auto filter = rp.PopRaw<SizedFriendFilter>();
-        const auto pid = rp.Pop<u64>();
-        LOG_WARNING(Service_Friend, "(STUBBED) called, offset={}, uuid=0x{}, pid={}", friend_offset,
-                    uuid.RawString(), pid);
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-
-        rb.Push<u32>(0); // Friend count
-        // TODO(ogniK): Return a buffer of u64s which are the "NetworkServiceAccountId"
-    }
-
-    void CheckFriendListAvailability(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto uuid{rp.PopRaw<Common::UUID>()};
-
-        LOG_WARNING(Service_Friend, "(STUBBED) called, uuid=0x{}", uuid.RawString());
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push(true);
-    }
-
-    void GetBlockedUserListIds(HLERequestContext& ctx) {
-        // This is safe to stub, as there should be no adverse consequences from reporting no
-        // blocked users.
-        LOG_WARNING(Service_Friend, "(STUBBED) called");
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push<u32>(0); // Indicates there are no blocked users
-    }
-
-    void CheckBlockedUserListAvailability(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto uuid{rp.PopRaw<Common::UUID>()};
-
-        LOG_WARNING(Service_Friend, "(STUBBED) called, uuid=0x{}", uuid.RawString());
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push(true);
-    }
-
-    void DeclareCloseOnlinePlaySession(HLERequestContext& ctx) {
-        // Stub used by Splatoon 2
-        LOG_WARNING(Service_Friend, "(STUBBED) called");
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void AddPlayHistory(HLERequestContext& ctx) {
-        // Mario Kart 8 Deluxe records the players it met after an online race.
-        LOG_DEBUG(Service_Friend, "(STUBBED) called");
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void UpdateUserPresence(HLERequestContext& ctx) {
-        // Stub used by Retro City Rampage
-        LOG_WARNING(Service_Friend, "(STUBBED) called");
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetPlayHistoryRegistrationKey(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto local_play = rp.Pop<bool>();
-        const auto uuid = rp.PopRaw<Common::UUID>();
-
-        LOG_WARNING(Service_Friend, "(STUBBED) called, local_play={}, uuid=0x{}", local_play,
-                    uuid.RawString());
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetFriendCount(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called");
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push(0);
-    }
-
-    void GetNewlyFriendCount(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called");
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push(0);
-    }
-
-    void RequestSyncFriendList(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called.");
-
-        // TODO (jarrodnorwell)
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetFriendListForViewer(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called");
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push<u32>(0);
-    }
-
-    void GetReceivedFriendRequestCount(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        [[maybe_unused]] const auto uuid = rp.PopRaw<Common::UUID>();
-
-        LOG_DEBUG(Service_Friend, "(STUBBED) called");
-
-        IPC::ResponseBuilder rb{ctx, 4};
-        rb.Push(ResultSuccess);
-        rb.Push(0);
-        rb.Push(0);
-    }
-
-    void GetUserPresenceView(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto uuid = rp.PopRaw<Common::UUID>();
-        LOG_DEBUG(Service_Friend, "(STUBBED) called, uuid={}.", uuid.RawString());
-
-        u8 buf[0xe0]{};
-        ctx.WriteBuffer(buf);
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetPlayHistoryStatistics(HLERequestContext& ctx) {
-        LOG_ERROR(Service_Friend, "(STUBBED) called, check in out");
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void LoadUserSetting(HLERequestContext& ctx) {
-        IPC::RequestParser rp{ctx};
-        const auto uuid = rp.PopRaw<Common::UUID>();
-
-        LOG_WARNING(Service_Friend, "(STUBBED) called");
-
-        FriendsUserSetting setting{};
-        setting.uuid = uuid;
-        setting.presence_permission = 2;
-        setting.play_log_permission = 5;
-        setting.friend_request_reception = 1;
-        setting.friend_code_next_issuable_time = 99999999999;
-        strcpy(setting.friend_code, "0000-0000-0000");
-        ctx.WriteBuffer(setting);
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void RequestListSummaryOverlayNotification(HLERequestContext& ctx) {
-        LOG_INFO(Service_Friend, "(STUBBED) called");
-
-        IPC::ResponseBuilder rb{ctx, 2};
-        rb.Push(ResultSuccess);
-    }
-
-    void GetReceivedFriendInvitationCountCache(HLERequestContext& ctx) {
-        LOG_DEBUG(Service_Friend, "(STUBBED) called, check in out");
-
-        IPC::ResponseBuilder rb{ctx, 3};
-        rb.Push(ResultSuccess);
-        rb.Push(0);
-    }
-
     KernelHelpers::ServiceContext service_context;
-
     Kernel::KEvent* completion_event;
+    u64 handled_requests{};
+    bool is_async_session{};
 };
 
 class INotificationService final : public ServiceFramework<INotificationService> {
@@ -461,7 +464,7 @@ private:
     struct SizedNotificationInfo {
         NotificationTypes notification_type;
         INSERT_PADDING_WORDS(
-            1); // TODO(ogniK): This doesn't seem to be used within any IPC returns as of now
+            1); // TODO (ogniK): This doesn't seem to be used within any IPC returns as of now
         u64_le account_id;
     };
     static_assert(sizeof(SizedNotificationInfo) == 0x10,
@@ -478,6 +481,16 @@ private:
     Kernel::KEvent* notification_event;
     std::queue<SizedNotificationInfo> notifications;
     States states{};
+};
+
+class IDaemonSuspendSessionService final : public ServiceFramework<IDaemonSuspendSessionService> {
+public:
+    explicit IDaemonSuspendSessionService(Core::System& system_)
+        : ServiceFramework{system_, "IDaemonSuspendSessionService"} {
+        // [Zephyron]: No commands for this service, so no handlers to register.
+    }
+
+    ~IDaemonSuspendSessionService() override = default;
 };
 
 void Module::Interface::CreateFriendService(HLERequestContext& ctx) {
@@ -498,9 +511,17 @@ void Module::Interface::CreateNotificationService(HLERequestContext& ctx) {
     rb.PushIpcInterface<INotificationService>(ctx, system, uuid);
 }
 
-Module::Interface::Interface(std::shared_ptr<Module> module_, Core::System& system_, const char* name)
-    : ServiceFramework{system_, name}, module{std::move(module_)}
-{}
+void Module::Interface::CreateDaemonSuspendSessionService(HLERequestContext& ctx) {
+    LOG_DEBUG(Service_Friend, "called");
+
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    rb.PushIpcInterface<IDaemonSuspendSessionService>(ctx, system);
+}
+
+Module::Interface::Interface(std::shared_ptr<Module> module_, Core::System& system_,
+                             const char* name)
+    : ServiceFramework{system_, name}, module{std::move(module_)} {}
 
 Module::Interface::~Interface() = default;
 
@@ -568,17 +589,786 @@ public:
 void LoopProcess(Core::System& system) {
     auto server_manager = std::make_unique<ServerManager>(system);
     auto module = std::make_shared<Module>();
-
     server_manager->RegisterNamedService("nd:app", std::make_shared<IServiceForApplication>(system));
     server_manager->RegisterNamedService("nd:sys", std::make_shared<IServiceForSystem>(system));
 
-    server_manager->RegisterNamedService("friend:a", std::make_shared<Friend>(module, system, "friend:a"));
-    server_manager->RegisterNamedService("friend:m", std::make_shared<Friend>(module, system, "friend:m"));
-    server_manager->RegisterNamedService("friend:s", std::make_shared<Friend>(module, system, "friend:s"));
-    server_manager->RegisterNamedService("friend:u", std::make_shared<Friend>(module, system, "friend:u"));
-    server_manager->RegisterNamedService("friend:v", std::make_shared<Friend>(module, system, "friend:v"));
+    server_manager->RegisterNamedService("friend:a",
+                                         std::make_shared<Friend>(module, system, "friend:a"));
+    server_manager->RegisterNamedService("friend:m",
+                                         std::make_shared<Friend>(module, system, "friend:m"));
+    server_manager->RegisterNamedService("friend:s",
+                                         std::make_shared<Friend>(module, system, "friend:s"));
+    server_manager->RegisterNamedService("friend:u",
+                                         std::make_shared<Friend>(module, system, "friend:u"));
+    server_manager->RegisterNamedService("friend:v",
+                                         std::make_shared<Friend>(module, system, "friend:v"));
 
     ServerManager::RunServer(std::move(server_manager));
+}
+
+void IFriendService::GetFriendList(HLERequestContext& ctx) {
+    IPC::RequestParser rp{ctx};
+    const auto offset = rp.Pop<u32>();
+    const auto friends = Grid0::Get();
+    const u64 title = system.GetApplicationProcessProgramID();
+    const size_t capacity = ctx.GetWriteBufferSize() / FriendRecordSize;
+    std::vector<u8> out;
+    u32 count = 0;
+    for (size_t i = offset; i < friends.size() && count < capacity; ++i, ++count) {
+        const auto record = MakeFriendRecord(friends[i], title);
+        out.insert(out.end(), record.begin(), record.end());
+    }
+    if (!out.empty()) {
+        ctx.WriteBuffer(out);
+    }
+    LOG_INFO(Service_Friend, "GetFriendList offset={} -> {}", offset, count);
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(count);
+}
+
+void IFriendService::CheckFriendListAvailability(HLERequestContext& ctx) {
+    IPC::RequestParser rp{ctx};
+    const auto uuid{rp.PopRaw<Common::UUID>()};
+    LOG_WARNING(Service_Friend, "(STUBBED) CheckFriendListAvailability called, uuid=0x{}",
+                uuid.RawString());
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push(true);
+}
+
+void IFriendService::GetBlockedUserListIds(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetBlockedUserListIds called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Indicates there are no blocked users
+}
+
+void IFriendService::CheckBlockedUserListAvailability(HLERequestContext& ctx) {
+    IPC::RequestParser rp{ctx};
+    const auto uuid{rp.PopRaw<Common::UUID>()};
+    LOG_WARNING(Service_Friend, "(STUBBED) CheckBlockedUserListAvailability called, uuid=0x{}",
+                uuid.RawString());
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push(true);
+}
+
+void IFriendService::DeclareCloseOnlinePlaySession(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeclareCloseOnlinePlaySession called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::UpdateUserPresence(HLERequestContext& ctx) {
+    // The nn::friends UserPresence (0xE0): uid 0x00, last-online 0x10, status 0x18, the game's
+    // app key-value storage 0x20..0xE0. The status and that blob are what a friend needs to see
+    // this player online and join them.
+    const auto presence = ctx.ReadBuffer();
+    if (presence.size() >= 0xE0) {
+        u32 status{};
+        std::memcpy(&status, presence.data() + 0x18, sizeof(status));
+        const std::vector<u8> app_field(presence.begin() + 0x20, presence.begin() + 0xE0);
+        Grid0::PublishPresence(status, system.GetApplicationProcessProgramID(), app_field);
+    }
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetPlayHistoryRegistrationKey(HLERequestContext& ctx) {
+    IPC::RequestParser rp{ctx};
+    const auto local_play = rp.Pop<bool>();
+    const auto uuid = rp.PopRaw<Common::UUID>();
+    LOG_WARNING(Service_Friend,
+                "(STUBBED) GetPlayHistoryRegistrationKey called, local_play={}, uuid=0x{}",
+                local_play, uuid.RawString());
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFriendCount(HLERequestContext& ctx) {
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push(static_cast<s32>(Grid0::Get().size()));
+}
+
+void IFriendService::GetNewlyFriendCount(HLERequestContext& ctx) {
+    LOG_DEBUG(Service_Friend, "(STUBBED) GetNewlyFriendCount called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push(0);
+}
+
+void IFriendService::GetReceivedFriendRequestCount(HLERequestContext& ctx) {
+    LOG_DEBUG(Service_Friend, "(STUBBED) GetReceivedFriendRequestCount called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push(0);
+}
+
+void IFriendService::GetPlayHistoryStatistics(HLERequestContext& ctx) {
+    LOG_ERROR(Service_Friend, "(STUBBED) GetPlayHistoryStatistics called, check in out");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::Cancel(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) Cancel called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::UpdateFriendInfo(HLERequestContext& ctx) {
+    // One record per requested id, in the same order: the caller pairs answers with its ids by
+    // position, so an id we cannot resolve stays an invalid record rather than being skipped.
+    const auto input = ctx.ReadBuffer();
+    std::vector<u64> wanted(input.size() / sizeof(u64));
+    std::memcpy(wanted.data(), input.data(), wanted.size() * sizeof(u64));
+
+    const auto friends = Grid0::Get();
+    const u64 title = system.GetApplicationProcessProgramID();
+    const size_t capacity = ctx.GetWriteBufferSize() / FriendRecordSize;
+    std::vector<u8> out;
+    size_t resolved = 0;
+    for (size_t i = 0; i < wanted.size() && i < capacity; ++i) {
+        std::array<u8, FriendRecordSize> record{};
+        for (const auto& f : friends) {
+            if (f.nsa_id == wanted[i]) {
+                record = MakeFriendRecord(f, title);
+                ++resolved;
+                break;
+            }
+        }
+        out.insert(out.end(), record.begin(), record.end());
+    }
+    if (!out.empty()) {
+        ctx.WriteBuffer(out);
+    }
+    LOG_DEBUG(Service_Friend, "UpdateFriendInfo {} id(s) -> {} resolved", wanted.size(), resolved);
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFriendProfileImage(HLERequestContext& ctx) {
+    IPC::RequestParser rp{ctx};
+    [[maybe_unused]] const auto uuid = rp.PopRaw<Common::UUID>();
+    const auto friend_id = rp.Pop<u64>();
+    u32 size = 0;
+    // The game does not ask again: a short wait beats a "?" picture for the whole session.
+    if (const auto jpeg = Grid0::ProfileImage(friend_id, std::chrono::milliseconds(1500));
+        jpeg && !jpeg->empty() && jpeg->size() <= ctx.GetWriteBufferSize()) {
+        ctx.WriteBuffer(*jpeg);
+        size = static_cast<u32>(jpeg->size());
+    }
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(size);
+}
+
+void IFriendService::GetFriendProfileImageWithImageSize(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendProfileImageWithImageSize called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Image size
+}
+
+void IFriendService::EnsureFriendListAvailable(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) EnsureFriendListAvailable called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendRequestForApplication(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendRequestForApplication called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::AddFacedFriendRequestForApplication(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) AddFacedFriendRequestForApplication called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::EnsureBlockedUserListAvailable(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) EnsureBlockedUserListAvailable called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetProfileList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Profile count
+}
+
+void IFriendService::GetProfileListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Profile count
+}
+
+void IFriendService::DeclareOpenOnlinePlaySession(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeclareOpenOnlinePlaySession called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId(
+    HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend,
+                "(STUBBED) GetPlayHistoryRegistrationKeyWithNetworkServiceAccountId called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::AddPlayHistory(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) AddPlayHistory called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+constexpr size_t MAX_URL_SIZE = 256;
+
+struct UrlPayload {
+    char url[MAX_URL_SIZE];
+};
+struct FriendSettingPayload {
+    unsigned char data[1];
+};
+struct NintendoNetworkIdInfoPayload {
+    unsigned char data[8];
+};
+struct SnsAccountLinkagePayload {
+    unsigned char data[8];
+};
+struct RelationshipPayload {
+    unsigned char data[4];
+};
+struct UserSettingPayload {
+    unsigned char data[16];
+};
+struct FacedFriendRequestRegistrationKeyPayload {
+    unsigned char data[16];
+};
+struct FriendCodePayload {
+    char code[15];
+}; // Size 15 for 14 chars + null terminator
+
+void IFriendService::GetProfileImageUrl(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileImageUrl called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    UrlPayload dummy_url_payload{{0}};
+    rb.PushRaw(dummy_url_payload);
+}
+
+void IFriendService::GetProfileImageUrlV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileImageUrlV2 called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    UrlPayload dummy_url_payload{{0}};
+    rb.PushRaw(dummy_url_payload);
+}
+
+void IFriendService::GetFriendDetailedInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendDetailedInfo called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+    // TODO [Zephyron]: Needs buffer for FriendDetailedInfo (X, (pid, size))
+}
+
+void IFriendService::SyncFriendList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SyncFriendList called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::RequestSyncFriendList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) RequestSyncFriendList called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFriendListForViewer(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendListForViewer called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Friend count
+}
+
+void IFriendService::UpdateFriendInfoForViewer(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) UpdateFriendInfoForViewer called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFriendDetailedInfoV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendDetailedInfoV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+    // TODO [Zephyron]: Needs buffer for FriendDetailedInfo (X, (pid, size))
+}
+
+void IFriendService::LoadFriendSetting(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) LoadFriendSetting called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    FriendSettingPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::GetFriendRequestList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendRequestList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Request count
+}
+
+void IFriendService::GetFriendRequestListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendRequestListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Request count
+}
+
+void IFriendService::GetFriendCandidateList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFriendCandidateList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Candidate count
+}
+
+void IFriendService::GetNintendoNetworkIdInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetNintendoNetworkIdInfo called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    NintendoNetworkIdInfoPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::GetSnsAccountLinkage(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetSnsAccountLinkage called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    SnsAccountLinkagePayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::GetSnsAccountProfile(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetSnsAccountProfile called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+    // TODO [Zephyron]: Needs buffer for SnsAccountProfile (X, (pid, size))
+}
+
+void IFriendService::GetSnsAccountFriendList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetSnsAccountFriendList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Friend count
+}
+
+void IFriendService::GetBlockedUserList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetBlockedUserList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Blocked user count
+}
+
+void IFriendService::SyncBlockedUserList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SyncBlockedUserList called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetBlockedUserListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetBlockedUserListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Blocked user count
+}
+
+void IFriendService::GetProfileExtraList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileExtraList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetRelationship(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetRelationship called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    RelationshipPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::GetProfileExtraListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileExtraListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetUserPresenceView(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetUserPresenceView called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+    // TODO [Zephyron]: Needs buffer for UserPresenceView (X, (pid, size))
+}
+
+void IFriendService::GetUserPresenceViewV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetUserPresenceViewV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+    // TODO [Zephyron]: Needs buffer for UserPresenceView (X, (pid, size))
+}
+
+void IFriendService::GetPlayHistoryList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetPlayHistoryList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetPlayHistoryListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetPlayHistoryListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::LoadUserSetting(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) LoadUserSetting called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    UserSettingPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::SyncUserSetting(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SyncUserSetting called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::LoadUserSettingV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) LoadUserSettingV2 called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    UserSettingPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::RequestListSummaryOverlayNotification(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) RequestListSummaryOverlayNotification called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetExternalApplicationCatalog(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetExternalApplicationCatalog called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetReceivedFriendInvitationList(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetReceivedFriendInvitationList called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetReceivedFriendInvitationDetailedInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetReceivedFriendInvitationDetailedInfo called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetReceivedFriendInvitationListV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetReceivedFriendInvitationListV2 called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Count
+}
+
+void IFriendService::GetReceivedFriendInvitationDetailedInfoV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetReceivedFriendInvitationDetailedInfoV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DropFriendNewlyFlags(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DropFriendNewlyFlags called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DeleteFriend(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeleteFriend called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DropFriendNewlyFlag(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DropFriendNewlyFlag called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ChangeFriendFavoriteFlag(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ChangeFriendFavoriteFlag called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ChangeFriendOnlineNotificationFlag(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ChangeFriendOnlineNotificationFlag called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendRequestWithApplicationInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendRequestWithApplicationInfo called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::CancelFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) CancelFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::AcceptFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) AcceptFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::RejectFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) RejectFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ReadFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ReadFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFacedFriendRequestRegistrationKey(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFacedFriendRequestRegistrationKey called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    FacedFriendRequestRegistrationKeyPayload payload{{0}};
+    rb.PushRaw(payload);
+}
+
+void IFriendService::AddFacedFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) AddFacedFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::CancelFacedFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) CancelFacedFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetFacedFriendRequestProfileImage(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFacedFriendRequestProfileImage called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Image size
+}
+
+void IFriendService::GetFacedFriendRequestProfileImageFromPath(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetFacedFriendRequestProfileImageFromPath called");
+    IPC::ResponseBuilder rb{ctx, 3};
+    rb.Push(ResultSuccess);
+    rb.Push<u32>(0); // Image size
+}
+
+void IFriendService::SendFriendRequestWithExternalApplicationCatalogId(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend,
+                "(STUBBED) SendFriendRequestWithExternalApplicationCatalogId called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ResendFacedFriendRequest(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ResendFacedFriendRequest called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendRequestWithNintendoNetworkIdInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendRequestWithNintendoNetworkIdInfo called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendRequestWithApplicationInfoV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendRequestWithApplicationInfoV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetSnsAccountLinkPageUrl(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetSnsAccountLinkPageUrl called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    UrlPayload dummy_url_payload{{0}};
+    rb.PushRaw(dummy_url_payload);
+}
+
+void IFriendService::UnlinkSnsAccount(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) UnlinkSnsAccount called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::BlockUser(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) BlockUser called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::BlockUserWithApplicationInfo(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) BlockUserWithApplicationInfo called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::UnblockUser(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) UnblockUser called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::BlockUserWithApplicationInfoV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) BlockUserWithApplicationInfoV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetProfileExtraFromFriendCode(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileExtraFromFriendCode called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::GetProfileExtraFromFriendCodeV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) GetProfileExtraFromFriendCodeV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DeletePlayHistory(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeletePlayHistory called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::AddPlayHistoryWithApplication(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) AddPlayHistoryWithApplication called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ChangePresencePermission(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ChangePresencePermission called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ChangeFriendRequestReception(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ChangeFriendRequestReception called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ChangePlayLogPermission(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ChangePlayLogPermission called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::IssueFriendCode(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) IssueFriendCode called");
+    IPC::ResponseBuilder rb{ctx, 2, 0, 1};
+    rb.Push(ResultSuccess);
+    FriendCodePayload payload{}; // Default initialize
+    strncpy(payload.code, "0000-0000-0000", sizeof(payload.code) - 1);
+    payload.code[sizeof(payload.code) - 1] = '\0'; // Ensure null termination for safety
+    rb.PushRaw(payload);
+}
+
+void IFriendService::ClearPlayLog(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ClearPlayLog called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendInvitation(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendInvitation called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::SendFriendInvitationV2(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) SendFriendInvitationV2 called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ReadFriendInvitation(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ReadFriendInvitation called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::ReadAllFriendInvitations(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) ReadAllFriendInvitations called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::OpenUser(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) OpenUser called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DeleteFriendListCache(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeleteFriendListCache called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DeleteBlockedUserListCache(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeleteBlockedUserListCache called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
+}
+
+void IFriendService::DeleteNetworkServiceAccountCache(HLERequestContext& ctx) {
+    LOG_WARNING(Service_Friend, "(STUBBED) DeleteNetworkServiceAccountCache called");
+    IPC::ResponseBuilder rb{ctx, 2};
+    rb.Push(ResultSuccess);
 }
 
 } // namespace Service::Friend

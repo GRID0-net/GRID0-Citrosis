@@ -164,13 +164,6 @@ object NativeLibrary {
      */
     external fun run(path: String?, programIndex: Int, frontendInitiated: Boolean)
 
-    /**
-     * Hands the signed-in Nextendo Network account to the emulated account service. Kept in
-     * memory only; the PID and the token are credentials and must never be logged.
-     */
-    external fun setNextendoSession(pid: Long, username: String, nexToken: String)
-
-    external fun clearNextendoSession()
 
     // Surface Handling
     external fun surfaceChanged(surf: Surface?)
@@ -545,12 +538,14 @@ object NativeLibrary {
     @Keep
     @JvmStatic
     fun onEmulationStarted() {
+        dev.lemon.lemon_emu.utils.NetworkMonitor.onEmulationStarted(LemonApplication.appContext)
         sEmulationActivity.get()!!.onEmulationStarted()
     }
 
     @Keep
     @JvmStatic
     fun onEmulationStopped(status: Int) {
+        dev.lemon.lemon_emu.utils.NetworkMonitor.onEmulationStopped()
         sEmulationActivity.get()!!.onEmulationStopped(status)
     }
 
@@ -564,6 +559,33 @@ object NativeLibrary {
      * Logs the Lemon version, Android version and, CPU.
      */
     external fun logDeviceInfo()
+
+    // ---- Citrosis ---------------------------------------------------------------------------
+
+    /** Forwards ComponentCallbacks2.onTrimMemory levels to the GPU caches. */
+    external fun onTrimMemory(level: Int)
+
+    /** Default IPv4 gateway per interface name, from ConnectivityManager. */
+    external fun setNetworkGateways(names: Array<String>, gateways: Array<String>)
+
+    /** Interfaces the emulator can use, as "name\tIPv4" entries. */
+    external fun getNetworkInterfaces(): Array<String>
+
+    /**
+     * Logs in to GRID0+ with the saved settings and returns {"1" or "0", message}.
+     * Blocks on the network: never call it on the main thread.
+     */
+    external fun grid0CheckLogin(): Array<String>
+
+    /** GRID0+ friends, requests and account as JSON (see jni/citrosis_android.cpp). Blocking. */
+    external fun grid0Friends(): String
+
+    /**
+     * A GRID0+ friend action: "send" (id = friend code), "accept"/"deny"/"cancel" (request id)
+     * or "remove" (friend id). Returns an error message, or "" on success. Blocking.
+     */
+    external fun grid0FriendAction(id: String, action: String): String
+
 
     /**
      * Submits inline keyboard text. Called on input for buttons that result text.

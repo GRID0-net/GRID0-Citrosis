@@ -240,9 +240,8 @@ class SettingsFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // The Nextendo sign-in finishes in the browser; show the new state on the way back.
-        if (args.menuTag == Settings.MenuTag.SECTION_NEXTENDO ||
-            args.menuTag == Settings.MenuTag.SECTION_ONLINE
+        // Refresh account settings after returning from the Friends screen.
+        if (args.menuTag == Settings.MenuTag.SECTION_ONLINE
         ) {
             presenter.loadSettingsList(true)
         }

@@ -21,6 +21,8 @@ include(GenerateSCMRev)
 
 add_library(
     common STATIC
+    memory_budget.cpp
+    memory_budget.h
     address_space.cpp
     address_space.h
     algorithm.h
@@ -82,8 +84,6 @@ add_library(
     memory_detect.h
     multi_level_page_table.cpp
     multi_level_page_table.h
-    nextendo_session.cpp
-    nextendo_session.h
     overflow.h
     page_table.cpp
     page_table.h

@@ -392,8 +392,13 @@ Result ServerManager::CompleteSyncRequest(Session* session) {
     // If we've been deferred, we're done.
     if (session->GetContext()->GetIsDeferred()) {
         // Insert into deferred session list.
-        std::scoped_lock ll{m_deferred_list_mutex};
-        m_deferred_sessions.push_back(session);
+        {
+            std::scoped_lock ll{m_deferred_list_mutex};
+            m_deferred_sessions.push_back(session);
+            // Arm after queueing, while the list lock still protects this context from
+            // another service thread retrying it. The deadline may already have passed.
+            session->GetContext()->NotifyDeferred();
+        }
 
         // Finish.
         R_SUCCEED();

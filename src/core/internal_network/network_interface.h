@@ -8,7 +8,9 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
+#include "common/common_types.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -31,6 +33,8 @@ struct NetworkInterface {
 std::vector<NetworkInterface> GetAvailableNetworkInterfaces();
 std::optional<NetworkInterface> GetSelectedNetworkInterface();
 void SelectFirstNetworkInterface();
+void SetPlatformGateways(std::vector<std::pair<std::string, u32>> gateways);
+std::optional<NetworkInterface> GetExplicitNetworkInterface();
 
 struct HostAdapter {
     in_addr ip_address;

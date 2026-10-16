@@ -6,6 +6,7 @@ package dev.lemon.lemon_emu.features.settings.ui
 import android.annotation.SuppressLint
 import android.os.Build
 import android.widget.Toast
+import dev.lemon.lemon_emu.features.settings.model.view.StringSingleChoiceSetting
 import dev.lemon.lemon_emu.NativeLibrary
 import dev.lemon.lemon_emu.R
 import dev.lemon.lemon_emu.LemonApplication
@@ -30,7 +31,6 @@ import dev.lemon.lemon_emu.features.settings.model.UShortSetting
 import dev.lemon.lemon_emu.features.settings.SettingsActions
 import dev.lemon.lemon_emu.features.settings.SettingsCategories
 import dev.lemon.lemon_emu.features.settings.model.view.*
-import dev.lemon.lemon_emu.nextendo.NextendoAccount
 import dev.lemon.lemon_emu.utils.GpuDriverHelper
 import dev.lemon.lemon_emu.utils.InputHandler
 import dev.lemon.lemon_emu.utils.LosslessScalingHelper
@@ -212,7 +212,6 @@ class SettingsFragmentPresenter(
             MenuTag.SECTION_DEBUG -> addDebugSettings(sl)
             MenuTag.SECTION_FREEDRENO -> addFreedrenoSettings(sl)
             MenuTag.SECTION_APPLETS -> addAppletSettings(sl)
-            MenuTag.SECTION_NEXTENDO -> addNextendoSettings(sl)
             MenuTag.SECTION_CUSTOM_PATHS -> addCustomPathsSettings(sl)
         }
         return sl
@@ -641,6 +640,9 @@ class SettingsFragmentPresenter(
 
     // Rendimiento: presets, speed limits and overclock.
     private fun addPerformanceSettings(sl: ArrayList<SettingsItem>) {
+        sl.add(BooleanSetting.RECLAIM_GUEST_MEMORY.key)
+        sl.add(BooleanSetting.FIT_CACHES_TO_RAM.key)
+
         val perGame = NativeConfig.isPerGameConfigLoaded()
         sl.apply {
             if (!perGame) {
@@ -704,11 +706,24 @@ class SettingsFragmentPresenter(
         }
     }
 
-    // En linea: Nextendo Network, local multiplayer and the console airplane mode.
+    // GRID0+, local multiplayer and the console airplane mode.
     private fun addOnlineSettings(sl: ArrayList<SettingsItem>) {
+        sl.add(HeaderSetting(R.string.grid0_header))
+        sl.add(networkInterfaceSetting())
+        sl.add(StringSetting.SWITCHNET_USERNAME.key)
+        sl.add(StringSetting.SWITCHNET_PASSWORD.key)
+        sl.add(StringSetting.SWITCHNET_SERVER.key)
+        sl.add(StringSetting.PRIVATE_SERVER_ADDRESS.key)
+        sl.add(StringSetting.PRIVATE_SERVER_NAT_SECONDARY_ADDRESS.key)
+        sl.add(StringSetting.PRIVATE_SERVER_CA_BUNDLE.key)
+        sl.add(RunnableSetting(titleId = R.string.grid0_test_login, isRunnable = true) { testGrid0Login() })
+        sl.add(actionSetting(
+            R.string.grid0_friends_title, 0, R.drawable.ic_account_circle
+        ) { host ->
+            host.startActivity(android.content.Intent(host, dev.lemon.lemon_emu.activities.Grid0FriendsActivity::class.java))
+        })
+
         if (!NativeConfig.isPerGameConfigLoaded()) {
-            sl.add(HeaderSetting(R.string.nextendo_network))
-            addNextendoSettings(sl)
 
             sl.add(HeaderSetting(R.string.settings_local_multiplayer))
             sl.add(
@@ -1047,62 +1062,73 @@ class SettingsFragmentPresenter(
             add(BooleanSetting.ENABLE_OVERLAY.key)
         }
     }
-    private fun addNextendoSettings(sl: ArrayList<SettingsItem>) {
-        sl.apply {
-            add(BooleanSetting.ENABLE_NEXTENDO.key)
-            val username = NextendoAccount.username()
-            when {
-                !NextendoAccount.isAvailable -> add(
-                    RunnableSetting(
-                        titleId = R.string.nextendo_sign_in,
-                        descriptionId = R.string.nextendo_unavailable,
-                        isRunnable = false
-                    ) {}
-                )
-
-                username == null -> add(
-                    RunnableSetting(
-                        titleId = R.string.nextendo_sign_in,
-                        descriptionId = R.string.nextendo_sign_in_description,
-                        isRunnable = activity != null,
-                        iconId = R.drawable.ic_account_circle
-                    ) {
-                        val currentActivity = activity ?: return@RunnableSetting
-                        NextendoAccount.signIn(currentActivity) { error ->
-                            currentActivity.runOnUiThread {
-                                if (error != null) {
-                                    Toast.makeText(
-                                        currentActivity,
-                                        currentActivity.getString(
-                                            R.string.nextendo_sign_in_failed,
-                                            error
-                                        ),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                                loadSettingsList(true)
-                            }
-                        }
-                    }
-                )
-
-                else -> add(
-                    RunnableSetting(
-                        titleId = R.string.nextendo_sign_out,
-                        descriptionString = context.getString(
-                            R.string.nextendo_signed_in_as,
-                            username
-                        ),
-                        isRunnable = !NativeLibrary.isRunning(),
-                        iconId = R.drawable.ic_account_circle
-                    ) {
-                        NextendoAccount.signOut()
-                        loadSettingsList(true)
-                    }
-                )
-            }
+    private fun networkInterfaceSetting(): StringSingleChoiceSetting {
+        val choices = arrayListOf(
+            context.getString(R.string.network_interface_automatic),
+            context.getString(R.string.network_interface_none)
+        )
+        val values = arrayListOf("", "None")
+        val current = StringSetting.NETWORK_INTERFACE.getString()
+        val interfaces = try {
+            NativeLibrary.getNetworkInterfaces()
+        } catch (e: UnsatisfiedLinkError) {
+            emptyArray()
         }
+        for (entry in interfaces) {
+            val parts = entry.split('\t')
+            val name = parts[0]
+            val ip = parts.getOrElse(1) { "" }
+            val label = when {
+                name.startsWith("wlan") -> context.getString(R.string.network_interface_wifi)
+                name.startsWith("rmnet") || name.startsWith("ccmni") ->
+                    context.getString(R.string.network_interface_mobile)
+                name.startsWith("tun") || name.startsWith("zt") ->
+                    context.getString(R.string.network_interface_vpn)
+                name.startsWith("eth") -> context.getString(R.string.network_interface_ethernet)
+                else -> null
+            }
+            choices.add(if (label != null) "$name \u2014 $label ($ip)" else "$name ($ip)")
+            values.add(name)
+        }
+        // Keep a saved pick that is down right now (ZeroTier not running yet) selectable.
+        if (current.isNotEmpty() && !values.contains(current)) {
+            choices.add(context.getString(R.string.network_interface_unavailable, current))
+            values.add(current)
+        }
+        return StringSingleChoiceSetting(
+            StringSetting.NETWORK_INTERFACE,
+            titleId = R.string.network_interface,
+            descriptionId = R.string.network_interface_description,
+            choices = choices.toTypedArray(),
+            values = values.toTypedArray()
+        )
     }
+
+    private fun testGrid0Login() {
+        Toast.makeText(context, R.string.grid0_test_login_running, Toast.LENGTH_SHORT).show()
+        Thread {
+            val result = try {
+                NativeLibrary.grid0CheckLogin()
+            } catch (e: Exception) {
+                arrayOf("0", e.message ?: "")
+            }
+            val ok = result.getOrNull(0) == "1"
+            val message = result.getOrNull(1) ?: ""
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        if (ok) R.string.grid0_test_login_ok else R.string.grid0_test_login_failed,
+                        message
+                    ),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.start()
+    }
+
+
+
 
     private fun addInputPlayer(sl: ArrayList<SettingsItem>, playerIndex: Int) {
         sl.apply {

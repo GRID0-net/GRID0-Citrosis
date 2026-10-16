@@ -22,6 +22,7 @@
 #include "core/file_sys/control_metadata.h"
 #include "core/file_sys/ips_layer.h"
 #include "core/file_sys/patch_manager.h"
+#include "core/file_sys/private_server_patches.h"
 #include "core/file_sys/registered_cache.h"
 #include "core/file_sys/romfs.h"
 #include "core/file_sys/vfs/vfs_cached.h"
@@ -433,7 +434,27 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
                 out = patched->ReadAllBytes();
         }
     }
-
+    const auto private_patches = GetPrivateServerPatches(build_id);
+    size_t applied_private_patches = 0;
+    for (const auto patch : private_patches) {
+        const auto patch_name = GetPrivateServerPatchName(patch);
+        const auto patched =
+            PatchIPS(std::make_shared<VectorVfsFile>(out),
+                     std::make_shared<VectorVfsFile>(std::vector<u8>(patch.begin(), patch.end())));
+        if (patched != nullptr) {
+            out = patched->ReadAllBytes();
+            ++applied_private_patches;
+            LOG_INFO(Loader, "GRID0+ patch applied: {} build={} ips_bytes={}",
+                     patch_name, build_id, patch.size());
+        } else {
+            LOG_ERROR(Loader, "GRID0+ patch FAILED: {} build={} image_bytes={} ips_bytes={}",
+                      patch_name, build_id, out.size(), patch.size());
+        }
+    }
+    if (!private_patches.empty()) {
+        LOG_INFO(Loader, "GRID0+ patch summary: {}/{} applied to {} build={}",
+                 applied_private_patches, private_patches.size(), name, build_id);
+    }
     if (out.size() < sizeof(Loader::NSOHeader)) {
         return nso;
     }
@@ -457,8 +478,8 @@ bool PatchManager::HasNSOPatch(const BuildID& build_id_, std::string_view name) 
     auto patch_dirs = load_dir->GetSubdirectories();
     std::sort(patch_dirs.begin(), patch_dirs.end(),
               [](const VirtualDir& l, const VirtualDir& r) { return l->GetName() < r->GetName(); });
-
-    return !CollectPatches(patch_dirs, build_id).empty();
+    return !CollectPatches(patch_dirs, build_id).empty() ||
+           !GetPrivateServerPatches(build_id).empty();
 }
 
 std::vector<Core::Memory::CheatEntry> PatchManager::CreateCheatList(const BuildID& build_id_) const {

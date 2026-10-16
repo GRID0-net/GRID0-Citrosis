@@ -46,7 +46,7 @@ struct ResponseBuilder {
 
         // The entire size of the raw data section in u32 units, including the 16 bytes of mandatory
         // padding.
-        u32 raw_data_size = ctx.write_size = ctx.IsTipc() ? normal_params_size - 1 : normal_params_size;
+        u32 raw_data_size = ctx.IsTipc() ? normal_params_size - 1 : normal_params_size;
         u32 num_handles_to_move{};
         u32 num_domain_objects{};
         const bool always_move_handles = (u32(flags) & u32(Flags::AlwaysMoveHandles)) != 0;
@@ -56,15 +56,16 @@ struct ResponseBuilder {
             num_domain_objects = num_objects_to_move;
         }
 
-        if (mgr->IsDomain()) {
+        const bool has_domain_header =
+            !ctx.IsTipc() && mgr->IsDomain() && ctx.HasDomainMessageHeader();
+        if (has_domain_header) {
             raw_data_size += u32(sizeof(DomainMessageHeader) / sizeof(u32) + num_domain_objects);
-            ctx.write_size += num_domain_objects;
         }
 
         if (ctx.IsTipc()) {
             header.type.Assign(ctx.GetCommandType());
         } else {
-            raw_data_size += u32(sizeof(IPC::DataPayloadHeader) / sizeof(u32) + 4 + normal_params_size);
+            raw_data_size += u32(sizeof(IPC::DataPayloadHeader) / sizeof(u32) + 4);
         }
 
         header.data_size.Assign(raw_data_size);
@@ -82,10 +83,11 @@ struct ResponseBuilder {
             Skip(num_handles_to_copy + num_handles_to_move, true);
         }
 
+        const u32 raw_data_offset = index;
         if (!ctx.IsTipc()) {
             AlignWithPadding();
 
-            if (mgr->IsDomain() && ctx.HasDomainMessageHeader()) {
+            if (has_domain_header) {
                 IPC::DomainMessageHeader domain_header{};
                 domain_header.num_objects = num_domain_objects;
                 PushRaw(domain_header);
@@ -98,8 +100,13 @@ struct ResponseBuilder {
         data_payload_index = index;
 
         ctx.data_payload_offset = index;
-        ctx.write_size += index;
-        ctx.domain_offset = u32(index + raw_data_size / sizeof(u32));
+        // Domain IDs immediately follow the result and normal output words. This is an
+        // end offset in words, as expected by WriteToOutgoingCommandBuffer, not a byte size.
+        ctx.domain_offset = index + normal_params_size + num_domain_objects;
+        // Include the trailing part of CMIF's mandatory padding, too. The advertised raw
+        // section must contain exactly the bytes copied to TLS, with no stale tail words.
+        ctx.write_size = raw_data_offset + raw_data_size;
+        ASSERT(ctx.write_size <= IPC::COMMAND_BUFFER_LENGTH);
     }
 
     inline void Skip(u32 size_in_words, bool set_to_null) {

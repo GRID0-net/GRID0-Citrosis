@@ -18,6 +18,7 @@
 #include "core/hle/service/ipc_helpers.h"
 #include "core/hle/service/service.h"
 #include "core/hle/service/sm/sm.h"
+#include "core/hle/service/sockets/private_server.h"
 #include "core/reporter.h"
 
 namespace Service {
@@ -148,6 +149,7 @@ Result ServiceFrameworkBase::HandleSyncRequest(Kernel::KServerSession& session,
     // memory that may be shutting down as well.
     if (system.IsPoweredOn()) {
         ctx.WriteToOutgoingCommandBuffer();
+        Sockets::TraceNplnGuestReply(ctx, GetServiceName());
     }
 
     return result;

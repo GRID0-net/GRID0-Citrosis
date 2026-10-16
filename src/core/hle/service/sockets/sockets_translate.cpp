@@ -367,7 +367,7 @@ PollEvents Translate(Network::PollEvents flags) {
 }
 
 Network::SockAddrIn Translate(SockAddrIn value) {
-    // All lengths are valid, from [0 upto 256]
+    // The service validates the family and copies the 16-byte IPv4 wire address.
     return {
         .family = Translate(Domain(value.family)),
         .ip = value.ip,

@@ -9,6 +9,9 @@ package dev.lemon.lemon_emu.features.settings.model
 import dev.lemon.lemon_emu.utils.NativeConfig
 
 enum class BooleanSetting(override val key: String) : AbstractBooleanSetting {
+    RECLAIM_GUEST_MEMORY("reclaim_guest_memory"),
+    FIT_CACHES_TO_RAM("fit_caches_to_ram"),
+
     AUDIO_MUTED("audio_muted"),
     FASTMEM("cpuopt_fastmem"),
     FASTMEM_EXCLUSIVES("cpuopt_fastmem_exclusives"),
@@ -57,7 +60,6 @@ enum class BooleanSetting(override val key: String) : AbstractBooleanSetting {
     OVERLAY_SNAP_TO_GRID("overlay_snap_to_grid"),
     TOUCHSCREEN("touchscreen"),
     AIRPLANE_MODE("airplane_mode"),
-    ENABLE_NEXTENDO("enable_nextendo"),
 
     SHOW_SOC_OVERLAY("show_soc_overlay"),
     SHOW_BUILD_ID("show_build_id"),

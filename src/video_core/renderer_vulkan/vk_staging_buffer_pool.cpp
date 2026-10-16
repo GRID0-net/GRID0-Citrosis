@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include "common/memory_budget.h"
 
 #include <fmt/ranges.h>
 
@@ -40,6 +41,8 @@ constexpr VkDeviceSize MAX_STREAM_BUFFER_SIZE = 256_MiB;
 #endif
 
 size_t GetStreamBufferSize(const Device& device) {
+    if (Common::MemoryBudget::GetLimits())
+        return 16_MiB;
     if (!device.HasDebuggingToolAttached()) {
         return MAX_STREAM_BUFFER_SIZE;
     }
@@ -61,6 +64,8 @@ size_t GetStreamBufferSize(const Device& device) {
     } else {
         size = MAX_STREAM_BUFFER_SIZE;
     }
+    if (Common::MemoryBudget::GetLimits())
+        size = std::min<u64>(size, 16_MiB);
     return (std::min)(Common::AlignUp(size, MAX_ALIGNMENT), MAX_STREAM_BUFFER_SIZE);
 }
 } // Anonymous namespace
@@ -122,6 +127,29 @@ void StagingBufferPool::FreeDeferred(StagingBufferRef& ref) {
 void StagingBufferPool::TickFrame() {
     current_delete_level = (current_delete_level + 1) % NUM_LEVELS;
 
+    if (const auto limits = Common::MemoryBudget::GetLimits()) {
+        size_t resident = stream_buffer_size;
+        for (const auto* cache : {&upload_cache, &download_cache}) {
+            for (const auto& level : *cache) {
+                for (const auto& entry : level.entries)
+                    resident += entry.mapped_span.size_bytes();
+            }
+        }
+        const auto available = Common::MemoryBudget::GetAvailableMemory();
+        const bool emergency = available != 0 && available < 512_MiB;
+        const size_t warm_limit =
+            emergency ? limits->staging_expected : std::max<u64>(limits->staging_expected, 192_MiB);
+        // This is a frame boundary: all draws using this frame's uniforms/indices have
+        // already been recorded. Mid-draw submissions would need extra lifetime tracking.
+        if (resident > 256_MiB || (emergency && resident > warm_limit))
+            scheduler.Finish();
+        if (resident > warm_limit) {
+            for (size_t level = 0; level < NUM_LEVELS; ++level) {
+                ReleaseLevel(upload_cache, level);
+                ReleaseLevel(download_cache, level);
+            }
+        }
+    }
     ReleaseCache(MemoryUsage::DeviceLocal);
     ReleaseCache(MemoryUsage::Upload);
     ReleaseCache(MemoryUsage::Download);
@@ -270,7 +298,7 @@ void StagingBufferPool::ReleaseLevel(StagingBuffersCache& cache, size_t log2) {
     const size_t old_size = entries.size();
 
     const auto is_deletable = [this](const StagingBuffer& entry) {
-        return scheduler.IsFree(entry.tick);
+        return !entry.deferred && scheduler.IsFree(entry.tick);
     };
     const size_t begin_offset = staging.delete_index;
     const size_t end_offset = (std::min)(begin_offset + deletions_per_tick, old_size);

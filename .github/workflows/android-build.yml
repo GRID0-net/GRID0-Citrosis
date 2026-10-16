@@ -1,108 +1,112 @@
-# SPDX-FileCopyrightText: Copyright 2026 Lemon-Project
+# SPDX-FileCopyrightText: Copyright 2026 Citrosis contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-
-name: Android build
-
-# Verifies the Android-only trim actually configures & compiles.
-# This exists because the dev sandbox that trims this repo has no
-# Android SDK/NDK/device available to test against locally.
+name: Citrosis Android APK
+run-name: Citrosis Android · ${{ inputs.source_ref }}
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Android source branch, tag or commit (the main branch is the desktop tree)'
+        required: true
+        default: codex/citrosis-android
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: citrosis-android-${{ inputs.source_ref }}
+  cancel-in-progress: false
 
 env:
-  NDK_VERSION: "28.2.13676358"
-  CMAKE_VERSION: "3.31.6"
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
-      - name: Checkout
+      - name: Check out the separate Android source
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_ref }}
           fetch-depth: 1
+          persist-credentials: false
 
-      - name: "Free disk space (needed for a full C++ build: ffmpeg/boost/etc.)"
+      - name: Verify source selection and record provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          marker = Path('citrosis-upstream.json')
+          if not marker.is_file() or json.loads(marker.read_text()).get('project') != 'Citrosis Android':
+              raise SystemExit('Select the Lemon-based Citrosis Android branch, not the desktop tree.')
+          PY
+          mkdir -p build-android
+          git rev-parse HEAD > build-android/SOURCE_COMMIT.txt
+          cp citrosis-upstream.json build-android/
+          printf '### Android source\n\nCommit: `%s`\n' "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/emulator \
-            /usr/local/lib/android/sdk/system-images "$AGENT_TOOLSDIRECTORY" || true
+            /usr/local/lib/android/sdk/system-images
           df -h /
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '21'
 
-      - name: Cache Gradle
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle downloads
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('src/android/**/*.gradle*', 'src/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: citrosis-android-gradle-${{ runner.os }}-${{ hashFiles('src/android/**/*.gradle*', 'src/android/gradle/wrapper/gradle-wrapper.properties', 'src/android/gradle/libs.versions.toml') }}
           restore-keys: |
-            gradle-${{ runner.os }}-
+            citrosis-android-gradle-${{ runner.os }}-
 
-      - name: Cache CPM dependency downloads
+      - name: Cache native dependency downloads
         uses: actions/cache@v4
         with:
           path: .cache/cpm
-          key: cpm-${{ runner.os }}-${{ hashFiles('cpmfile.json') }}
+          key: citrosis-android-cpm-${{ runner.os }}-${{ hashFiles('cpmfile.json', 'CMakeLists.txt', 'CMakeModules/**') }}
           restore-keys: |
-            cpm-${{ runner.os }}-
+            citrosis-android-cpm-${{ runner.os }}-
 
-      - name: Install host build tools (glslangValidator, ccache)
+      - name: Install host tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y glslang-tools ccache
+          sudo apt-get install -y ninja-build glslang-tools autoconf automake libtool pkg-config nasm yasm
 
-      - name: Cache ccache compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-${{ github.ref_name }}-
-            ccache-${{ runner.os }}-
-
-      - name: Install Android SDK components (NDK + CMake)
+      - name: Build arm64 mainline Release APK
+        shell: bash
         run: |
-          SDK_MANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDK_MANAGER" --licenses > /dev/null
-          "$SDK_MANAGER" \
-            "platforms;android-36" \
-            "ndk;${NDK_VERSION}" \
-            "cmake;${CMAKE_VERSION}"
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ./build-citrosis-android.sh --setup --jobs 2
+          cd build-android
+          sha256sum Citrosis-release.apk > SHA256SUMS
+          printf '\n### APK SHA-256\n\n```\n%s\n```\n' "$(cat SHA256SUMS)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Pick build channel flag from branch name
-        id: channel
-        run: |
-          case "${{ github.ref_name }}" in
-            nightly) echo "flag=-n" >> "$GITHUB_OUTPUT"; echo "name=nightly" >> "$GITHUB_OUTPUT" ;;
-            experimental) echo "flag=-e" >> "$GITHUB_OUTPUT"; echo "name=experimental" >> "$GITHUB_OUTPUT" ;;
-            *) echo "flag=" >> "$GITHUB_OUTPUT"; echo "name=standard" >> "$GITHUB_OUTPUT" ;;
-          esac
-
-      - name: Build APK (standard flavor, Release)
-        run: |
-          export ANDROID_NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
-          export CCACHE_DIR="$HOME/.cache/ccache"
-          mkdir -p "$CCACHE_DIR"
-          ccache --max-size=5G
-          chmod +x .ci/android/build.sh
-          CCACHE=true .ci/android/build.sh -t standard -b Release ${{ steps.channel.outputs.flag }}
-          ccache --show-stats
-
-      - name: Upload APK/AAB artifacts
-        if: always()
+      - name: Upload APK and source receipt
         uses: actions/upload-artifact@v4
         with:
-          name: lemon-project-${{ steps.channel.outputs.name }}-release
-          path: artifacts/
-          retention-days: 14
-          if-no-files-found: warn
+          name: Citrosis-Android-arm64-${{ github.run_number }}
+          path: |
+            build-android/Citrosis-release.apk
+            build-android/SHA256SUMS
+            build-android/SOURCE_COMMIT.txt
+            build-android/citrosis-upstream.json
+          if-no-files-found: error
+          retention-days: 30

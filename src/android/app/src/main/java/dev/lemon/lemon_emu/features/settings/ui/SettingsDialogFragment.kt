@@ -264,6 +264,10 @@ class SettingsDialogFragment : DialogFragment(), DialogInterface.OnClickListener
             SettingsItem.TYPE_STRING_INPUT -> {
                 stringInputBinding = DialogEditTextBinding.inflate(layoutInflater)
                 val item = settingsViewModel.clickedItem as StringInputSetting
+                if (item.isPassword) {
+                    stringInputBinding.editText.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                }
                 stringInputBinding.editText.setText(item.getSelectedValue())
 
                 val onGenerate = item.onGenerate

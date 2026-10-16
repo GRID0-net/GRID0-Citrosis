@@ -8,15 +8,19 @@
 
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
 #include "common/fs/file.h"
 #include "common/hex_util.h"
+#include "common/settings.h"
 #include "common/string_util.h"
+#include "core/hle/service/sockets/private_server.h"
 
 #include "core/hle/service/sockets/sfdnsres.h"
 #include "core/hle/service/ssl/ssl_backend.h"
+#include "core/hle/service/ssl/switchnet_ca.h"
 #include "core/internal_network/network.h"
 #include "core/internal_network/sockets.h"
 
@@ -44,6 +48,7 @@ BIO_METHOD* bio_meth;
 Result CheckOpenSSLErrors();
 void OneTimeInit();
 void OneTimeInitLogFile();
+void AddPrivateServerTrust();
 bool OneTimeInitBIO();
 
 #ifdef YUZU_BUNDLED_OPENSSL
@@ -161,7 +166,7 @@ public:
     Result SetHostName(const std::string& hostname_in) override {
         std::string hostname = hostname_in;
         // Some titles hand over the address they resolved instead of the name. When that address
-        // stands in for a Nintendo host (Nextendo Network), present the real name as the SNI.
+        // stands in for a Nintendo host (GRID0+), present the real name as the SNI.
         if (const std::string redirected = RedirectedHostOfPeer();
             !redirected.empty() && (hostname.empty() || hostname == PeerAddress())) {
             hostname = redirected;
@@ -209,17 +214,17 @@ public:
     }
 
     Result DoHandshake() override {
-        if (nextendo_host.empty()) {
+        if (redirected_host.empty()) {
             if (const std::string redirected = RedirectedHostOfPeer(); !redirected.empty()) {
-                nextendo_host = redirected;
-                PrepareNextendoHandshake(redirected);
+                redirected_host = redirected;
+                PrepareRedirectedHandshake(redirected);
             }
         }
 
         SSL_set_verify_result(ssl, X509_V_OK);
         const int ret = SSL_do_handshake(ssl);
-        if (!nextendo_host.empty()) {
-            LogNextendoHandshake(ret);
+        if (!redirected_host.empty()) {
+            LogRedirectedHandshake(ret);
         }
 
         if (!skip_cert_verification) {
@@ -246,9 +251,9 @@ public:
         const int ret = SSL_read_ex(ssl, data.data(), data.size(), out_size);
         const Result res = HandleReturn("SSL_read_ex", out_size, ret);
         if (res == ResultSuccess) {
-            if (!nextendo_host.empty() && bytes_read == 0 && *out_size > 0) {
+            if (!redirected_host.empty() && bytes_read == 0 && *out_size > 0) {
                 // The status line of an HTTP answer says why a server turned the game away.
-                LOG_INFO(Service_SSL, "Nextendo: {} answered '{}'", nextendo_host,
+                LOG_INFO(Service_SSL, "GRID0+: {} answered '{}'", redirected_host,
                          FirstLine(data.first(*out_size)));
             }
             bytes_read += *out_size;
@@ -260,12 +265,12 @@ public:
         const int ret = SSL_write_ex(ssl, data.data(), data.size(), out_size);
         const Result res = HandleReturn("SSL_write_ex", out_size, ret);
         if (res == ResultSuccess) {
-            if (!nextendo_host.empty() && bytes_written == 0 && *out_size > 0) {
+            if (!redirected_host.empty() && bytes_written == 0 && *out_size > 0) {
                 // Method and path only: headers and the query string can carry tokens.
                 const std::string line = FirstLine(data.first(*out_size));
                 const std::string request =
                     line.substr(0, line.find_first_of("? ", line.find(' ') + 1));
-                LOG_INFO(Service_SSL, "Nextendo: {} asked '{}'", nextendo_host, request);
+                LOG_INFO(Service_SSL, "GRID0+: {} asked '{}'", redirected_host, request);
             }
             bytes_written += *out_size;
         }
@@ -321,9 +326,9 @@ public:
     }
 
     ~SSLConnectionBackendOpenSSL() {
-        if (!nextendo_host.empty()) {
-            LOG_INFO(Service_SSL, "Nextendo: TLS to {} closed, sent {} bytes, received {}{}",
-                     nextendo_host, bytes_written, bytes_read,
+        if (!redirected_host.empty()) {
+            LOG_INFO(Service_SSL, "GRID0+: TLS to {} closed, sent {} bytes, received {}{}",
+                     redirected_host, bytes_written, bytes_read,
                      got_read_eof ? ", server hung up" : "");
         }
         // this is null-tolerant:
@@ -342,20 +347,20 @@ public:
         return line;
     }
 
-    void LogNextendoHandshake(int ret) {
+    void LogRedirectedHandshake(int ret) {
         if (ret == 1) {
             const unsigned char* alpn = nullptr;
             unsigned int alpn_len = 0;
             SSL_get0_alpn_selected(ssl, &alpn, &alpn_len);
-            LOG_INFO(Service_SSL, "Nextendo: TLS to {} established ({}, ALPN '{}')",
-                     nextendo_host, SSL_get_version(ssl),
+            LOG_INFO(Service_SSL, "GRID0+: TLS to {} established ({}, ALPN '{}')",
+                     redirected_host, SSL_get_version(ssl),
                      std::string_view{reinterpret_cast<const char*>(alpn), alpn_len});
             return;
         }
         const int err = SSL_get_error(ssl, ret);
         if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
-            LOG_WARNING(Service_SSL, "Nextendo: TLS handshake with {} failed (SSL error {})",
-                        nextendo_host, err);
+            LOG_WARNING(Service_SSL, "GRID0+: TLS handshake with {} failed (SSL error {})",
+                        redirected_host, err);
         }
     }
 
@@ -446,11 +451,11 @@ public:
         return address.empty() ? std::string{} : Service::Sockets::GetRedirectedHostForIp(address);
     }
 
-    // Nextendo Network connection: make sure the SNI names the Nintendo host, and offer
+    // GRID0+ connection: make sure the SNI names the Nintendo host, and offer
     // HTTP/1.1 only - NEX runs over a WebSocket upgrade that HTTP/2 would break. NPLN titles
     // (gRPC) need the HTTP/2 they asked for. After citron-nextendo (Copyright 2026 citron
     // Emulator Project).
-    void PrepareNextendoHandshake(const std::string& redirected_host) {
+    void PrepareRedirectedHandshake(const std::string& redirected_host) {
         const char* sni = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
         if (sni == nullptr) {
             SSL_set_tlsext_host_name(ssl, redirected_host.c_str());
@@ -488,7 +493,7 @@ public:
     bool got_read_eof = false;
     bool skip_cert_verification = false;
     std::vector<u8> requested_alpn;
-    std::string nextendo_host; ///< Set when this connection goes to a Nextendo server.
+    std::string redirected_host; ///< Set when this connection goes to a GRID0+ server.
     size_t bytes_read = 0;
     size_t bytes_written = 0;
 
@@ -552,6 +557,8 @@ void OneTimeInit() {
         return;
     }
 
+    AddPrivateServerTrust();
+
     OneTimeInitLogFile();
 
     if (!OneTimeInitBIO()) {
@@ -559,6 +566,46 @@ void OneTimeInit() {
     }
 
     one_time_init_success = true;
+}
+
+// Adds the CA of a private replacement for Nintendo's servers to what the guest trusts. This adds
+// one issuer; it does not relax any check. The hostname is still verified (SSL_set1_host), so a
+// certificate from that CA for the wrong name is still refused, and nothing chaining to any other
+// root is accepted because of it. Read once, like the rest of the context: changing the setting
+// needs a restart.
+void AddPrivateServerTrust() {
+    const std::string& bundle = Settings::values.private_server_ca_bundle.GetValue();
+    if (!bundle.empty()) {
+        if (SSL_CTX_load_verify_locations(ssl_ctx, bundle.c_str(), nullptr) != 1) {
+            LOG_ERROR(Service_SSL, "Could not load the private server CA bundle {}", bundle);
+            CheckOpenSSLErrors();
+            return;
+        }
+        LOG_INFO(Service_SSL, "Trusting the private server CA bundle {}", bundle);
+        return;
+    }
+
+    if (Service::Sockets::PrivateServerAddress().empty()) {
+        return;
+    }
+
+    BIO* pem =
+        BIO_new_mem_buf(SwitchNetLocalCaPem.data(), static_cast<int>(SwitchNetLocalCaPem.size()));
+    if (!pem) {
+        CheckOpenSSLErrors();
+        return;
+    }
+    X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+    int added = 0;
+    while (X509* cert = PEM_read_bio_X509(pem, nullptr, nullptr, nullptr)) {
+        if (X509_STORE_add_cert(store, cert) == 1) {
+            ++added;
+        }
+        X509_free(cert);
+    }
+    ERR_clear_error(); // PEM_read_bio_X509 ends the loop with an expected "no start line" error.
+    BIO_free(pem);
+    LOG_INFO(Service_SSL, "Trusting the built-in SwitchNet Local CA ({} certificate(s))", added);
 }
 
 void OneTimeInitLogFile() {

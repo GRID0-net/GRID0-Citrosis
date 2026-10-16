@@ -13,8 +13,10 @@
 #include <boost/container/small_vector.hpp>
 
 #include "common/alignment.h"
+#include "common/memory_budget.h"
 #include "common/settings.h"
 #include "common/slot_vector.h"
+#include "video_core/citrosis_diag.h"
 #include "video_core/control/channel_state.h"
 #include "video_core/dirty_flags.h"
 #include "video_core/engines/kepler_compute.h"
@@ -115,6 +117,12 @@ TextureCache<P>::TextureCache(Runtime& runtime_, Tegra::MaxwellDeviceMemoryManag
 
 template <class P>
 void TextureCache<P>::RunGarbageCollector() {
+    if (const auto limits = Common::MemoryBudget::GetLimits()) {
+        expected_memory = limits->texture_expected;
+        critical_memory = limits->texture_critical;
+        minimum_memory = limits->texture_expected;
+    }
+
     bool high_priority_mode = false;
     bool aggressive_mode = false;
     u64 ticks_to_destroy = 0;
@@ -122,7 +130,13 @@ void TextureCache<P>::RunGarbageCollector() {
     const auto Configure = [&](bool allow_aggressive) {
         high_priority_mode = total_used_memory >= expected_memory;
         aggressive_mode = allow_aggressive && total_used_memory >= critical_memory;
-        ticks_to_destroy = aggressive_mode ? 10ULL : high_priority_mode ? 25ULL : 50ULL;
+        const bool emergency = Common::MemoryBudget::GetAvailableMemory() != 0 &&
+                               Common::MemoryBudget::GetAvailableMemory() < 512_MiB;
+        ticks_to_destroy = Common::MemoryBudget::GetLimits() && !emergency
+                               ? (aggressive_mode ? 60ULL : 120ULL)
+                               : (aggressive_mode      ? 10ULL
+                                  : high_priority_mode ? 25ULL
+                                                       : 50ULL);
         num_iterations = aggressive_mode ? 40 : (high_priority_mode ? 20 : 10);
     };
     const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode](ImageId image_id) {
@@ -134,6 +148,12 @@ void TextureCache<P>::RunGarbageCollector() {
         if (True(image.flags & ImageFlagBits::IsDecoding)) {
             return false;
         }
+        const bool emergency = Common::MemoryBudget::GetAvailableMemory() != 0 &&
+                               Common::MemoryBudget::GetAvailableMemory() < 512_MiB;
+        if (Common::MemoryBudget::GetLimits() && !emergency &&
+            total_used_memory < critical_memory * 2 &&
+            True(image.flags & ImageFlagBits::GpuModified))
+            return false;
         const bool must_download = IsDownloadable(image) && False(image.flags & ImageFlagBits::BadOverlap);
         if ((!aggressive_mode && True(image.flags & ImageFlagBits::CostlyLoad)) || (!high_priority_mode && must_download)) {
             return false;
@@ -177,8 +197,13 @@ void TextureCache<P>::RunGarbageCollector() {
 
 template <class P>
 void TextureCache<P>::TickFrame() {
+    if (const auto limits = Common::MemoryBudget::GetLimits()) {
+        expected_memory = limits->texture_expected;
+        critical_memory = limits->texture_critical;
+        minimum_memory = limits->texture_expected;
+    }
     // If we can obtain the memory info, use it instead of the estimate.
-    if (runtime.CanReportMemoryUsage()) {
+    if (!Common::MemoryBudget::GetLimits() && runtime.CanReportMemoryUsage()) {
         total_used_memory = runtime.GetDeviceMemoryUsage();
     }
     if (total_used_memory > minimum_memory) {
@@ -1184,7 +1209,9 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
         runtime.TransitionImageLayout(image);
         return;
     }
-    if (True(image.flags & ImageFlagBits::AsynchronousDecode)) {
+    if (True(image.flags & ImageFlagBits::AsynchronousDecode) &&
+        (!Common::MemoryBudget::GetLimits() ||
+         (Common::MemoryBudget::GetAvailableMemory() >= 512_MiB && async_decodes.size() < 4))) {
         QueueAsyncDecode(image, image_id);
         return;
     }
@@ -1233,7 +1260,26 @@ void TextureCache<P>::UploadImageContents(Image& image, StagingBuffer& staging) 
         ConvertImage(unswizzle_data_buffer, image.info, mapped_span, copies);
         image.UploadMemory(staging, copies);
     } else {
-        const auto copies = FixSmallVectorADL(UnswizzleImage(*gpu_memory, gpu_addr, image.info, swizzle_data, mapped_span));
+        const bool sanitize = CitrosisDiag::SanitizeUploads();
+        const bool fused = sanitize && CitrosisDiag::CanSanitize(image.info.format);
+        size_t fixed = 0;
+        const auto copies =
+            FixSmallVectorADL(UnswizzleImage(*gpu_memory, gpu_addr, image.info, swizzle_data,
+                                             mapped_span, fused ? &fixed : nullptr));
+        if (sanitize && !fused) {
+            fixed = CitrosisDiag::ScrubNonFinite(
+                image.info.format, mapped_span.first(std::min<size_t>(
+                                       mapped_span.size_bytes(), image.unswizzled_size_bytes)));
+        }
+        if (fixed) {
+            static std::atomic<u32> reports{};
+            const u32 n = reports.fetch_add(1, std::memory_order_relaxed);
+            if (n < 16 || (n & (n - 1)) == 0)
+                LOG_WARNING(
+                    HW_GPU,
+                    "Citrosis HDR: scrubbed {} non-finite components, image {:#x}, format {}",
+                    fixed, gpu_addr, static_cast<u32>(image.info.format));
+        }
         image.UploadMemory(staging, copies);
     }
 }

@@ -4,8 +4,8 @@
     <string name="notice_notification_channel_name">Avisos y errores</string>
     <string name="notice_notification_channel_description">Mostrar notificaciones cuando algo vaya mal.</string>
     <string name="notification_permission_not_granted">¡Permiso de notificación no concedido!</string>
-    <string name="app_notification_channel_description">Notificaciones del emulador Lemon Switch</string>
-    <string name="app_notification_running">Lemon se está ejecutando</string>
+    <string name="app_notification_channel_description">Notificaciones del emulador Citrosis Switch</string>
+    <string name="app_notification_running">Citrosis se está ejecutando</string>
     <string name="seconds">Segundos</string>
 
     <!-- Spinbox strings -->
@@ -199,7 +199,7 @@
 
     <!-- Setup strings -->
     <string name="welcome">¡Bienvenido!</string>
-    <string name="welcome_description">Aprende cómo configurar <b>Lemon</b> y salta a la emulación.</string>
+    <string name="welcome_description">Aprende cómo configurar <b>Citrosis</b> y salta a la emulación.</string>
     <string name="get_started">Empezar</string>
     <string name="keys">Claves</string>
     <string name="keys_description">Selecciona tu archivo <b>prod.keys</b></string>
@@ -224,8 +224,8 @@
     <string name="game_image_desc">Captura de pantalla para %1$s</string>
     <string name="folder">Carpeta</string>
     <string name="dont_show_again">No mostrar de nuevo</string>
-    <string name="support_prompt_title">¿Te gusta Lemon?</string>
-    <string name="support_prompt_description">Lemon es un proyecto independiente y pequeño. Si te gusta, puedes ayudar a mantenerlo con un Ko-fi o invitándome a un café, o unirte a la comunidad en Discord para compartir opiniones y recibir ayuda. ¡Gracias!</string>
+    <string name="support_prompt_title">¿Te gusta Citrosis?</string>
+    <string name="support_prompt_description">Citrosis es un proyecto independiente y pequeño. Si te gusta, puedes ayudar a mantenerlo con un Ko-fi o invitándome a un café, o unirte a la comunidad en Discord para compartir opiniones y recibir ayuda. ¡Gracias!</string>
     <string name="not_now">Ahora no</string>
     <string name="add_directory_success">Nuevo directorio de juegos agregado exitosamente</string>
     <string name="enable_update_checks">Buscar actualizaciones</string>
@@ -258,17 +258,17 @@
     <string name="lemon_tab_data">Datos y guardado</string>
     <string name="lemon_search_settings">Buscar ajustes</string>
     <string name="settings_search_no_results">Ningún ajuste coincide con la búsqueda</string>
-    <string name="lemon_welcome_title">Bienvenido a Lemon</string>
+    <string name="lemon_welcome_title">Bienvenido a Citrosis</string>
     <string name="lemon_welcome_subtitle">Switch en tu Android, afinado para Adreno</string>
-    <string name="lemon_welcome_feature_driver">Controlador de GPU Lemon-Ade integrado</string>
+    <string name="lemon_welcome_feature_driver">Controlador de GPU Citrosis bundled Turnip integrado</string>
     <string name="lemon_welcome_feature_lite">Ajustes ligeros para GPUs menos potentes</string>
     <string name="lemon_welcome_feature_migrate">Trae tus partidas de Eden o Citron</string>
     <string name="lemon_welcome_feature_savestate">Guardado rápido en cualquier juego</string>
     <string name="lemon_welcome_start">Empezar</string>
     <string name="lemon_ui_modern_title">Interfaz nueva</string>
-    <string name="lemon_ui_modern_description">La interfaz rediseñada de Lemon. Desactívala para volver a la clásica; se aplica al volver a la biblioteca.</string>
+    <string name="lemon_ui_modern_description">La interfaz rediseñada de Citrosis. Desactívala para volver a la clásica; se aplica al volver a la biblioteca.</string>
     <string name="manage_game_folders">Gestionar carpetas de juegos</string>
-    <string name="select_games_folder_description">Permite que Lemon complete la lista de juegos.</string>
+    <string name="select_games_folder_description">Permite que Citrosis complete la lista de juegos.</string>
     <string name="add_games_warning">¿Omitir la selección de la carpeta de juegos?</string>
     <string name="add_games_warning_description">Los juegos no se mostrarán en la lista de juegos si no se selecciona una carpeta.</string>
     <string name="add_games_warning_help">https://yuzu-mirror.github.io/help/quickstart/#dumping-games</string>
@@ -372,15 +372,15 @@
     <string name="settings_description">Configurar los ajustes del emulador</string>
     <string name="search_recently_played">Jugado recientemente</string>
     <string name="search_recently_added">Añadido recientemente</string>
-    <string name="open_user_folder">Abrir la carpeta de Lemon</string>
-    <string name="open_user_folder_description">Administrar los archivos internos de Lemon</string>
+    <string name="open_user_folder">Abrir la carpeta de Citrosis</string>
+    <string name="open_user_folder_description">Administrar los archivos internos de Citrosis</string>
     <string name="app_settings_description">Modificar el comportamiento y la apariencia de la aplicación.</string>
     <string name="no_file_manager">Explorador de archivos no encontrado</string>
-    <string name="notification_no_directory_link">No se pudo abrir la carpeta Lemon</string>
+    <string name="notification_no_directory_link">No se pudo abrir la carpeta Citrosis</string>
     <string name="notification_no_directory_link_description">Por favor, busque la carpeta user con el panel lateral del explorador de archivos de forma manual.</string>
     <string name="manage_save_data">Administrar datos de guardado</string>
     <string name="migrate_from_emulator">Migrar desde otro emulador</string>
-    <string name="migrate_from_emulator_description">Trae tus partidas guardadas desde Eden, Citron o yuzu sin tener que abrirlos (y las claves y el firmware si Lemon aún no los tiene)</string>
+    <string name="migrate_from_emulator_description">Trae tus partidas guardadas desde Eden, Citron o yuzu sin tener que abrirlos (y las claves y el firmware si Citrosis aún no los tiene)</string>
     <string name="migrate_from_emulator_setup_description">¿Vienes de otro emulador? Importa tus partidas, claves y firmware en un solo paso</string>
     <string name="migrate_no_sources">No se ha encontrado ningún emulador compatible. Son compatibles Eden, Citron, yuzu y otros emuladores basados en yuzu.</string>
     <string name="migrate_choose_source">Migrar desde</string>
@@ -388,17 +388,17 @@
     <string name="migrate_nothing">No hay nada que importar desde %1$s.</string>
     <string name="migrate_confirm_title">Migrar desde %1$s</string>
     <string name="migrate_found_saves">Partidas guardadas encontradas: %1$d</string>
-    <string name="migrate_found_conflicts">%1$d de esos juegos ya tienen partida en Lemon.</string>
-    <string name="migrate_found_keys">También se importarán tus claves (Lemon aún no tiene).</string>
-    <string name="migrate_found_firmware">También se importará tu firmware (Lemon aún no tiene).</string>
-    <string name="migrate_replace">Reemplazar las de Lemon</string>
-    <string name="migrate_keep">Conservar las de Lemon</string>
+    <string name="migrate_found_conflicts">%1$d de esos juegos ya tienen partida en Citrosis.</string>
+    <string name="migrate_found_keys">También se importarán tus claves (Citrosis aún no tiene).</string>
+    <string name="migrate_found_firmware">También se importará tu firmware (Citrosis aún no tiene).</string>
+    <string name="migrate_replace">Reemplazar las de Citrosis</string>
+    <string name="migrate_keep">Conservar las de Citrosis</string>
     <string name="migrate_import">Importar</string>
     <string name="migrating">Migrando</string>
-    <string name="migrate_done">Importadas: %1$d · Conservadas de Lemon: %2$d · Con error: %3$d</string>
+    <string name="migrate_done">Importadas: %1$d · Conservadas de Citrosis: %2$d · Con error: %3$d</string>
     <string name="migrate_done_keys">Claves importadas.</string>
     <string name="migrate_done_firmware">Firmware importado.</string>
-    <string name="migrate_done_backup">Las partidas de Lemon reemplazadas se han guardado en %1$s</string>
+    <string name="migrate_done_backup">Las partidas de Citrosis reemplazadas se han guardado en %1$s</string>
     <string name="manage_save_data_description">Guardar los datos encontrados. Por favor, seleccione una opción de abajo.</string>
     <string name="import_save_warning">Importar datos de guardado</string>
     <string name="import_save_warning_description">Esto sobreescribirá todos los datos de guardado existentes con el archivo proporcionado. ¿Está seguro de querer continuar\?</string>
@@ -414,10 +414,10 @@
     <string name="firmware_installed_failure_description">Asegúrese de que los archivos nca del firmware estén en la raíz del zip e inténtelo de nuevo.</string>
     <string name="firmware_uninstalled_failure">Error al desinstalar el firmware</string>
     <string name="share_log">Compartir registros de depuración</string>
-    <string name="share_log_description">Comparta el archivo de registro de Lemon para depurar problemas</string>
+    <string name="share_log_description">Comparta el archivo de registro de Citrosis para depurar problemas</string>
     <string name="share_log_missing">No se encontró ningún archivo de registro</string>
     <string name="share_gpu_log">Compartir registros de la GPU</string>
-    <string name="share_gpu_log_description">Comparte el archivo de registros de la GPU de Lemon para depurar problemas gráficos</string>
+    <string name="share_gpu_log_description">Comparte el archivo de registros de la GPU de Citrosis para depurar problemas gráficos</string>
     <string name="share_gpu_log_missing">No se encontró ningún archivo de registro de la GPU</string>
     <string name="install_game_content">Instalar contenido del juego</string>
     <string name="install_game_content_description">Instalar actualizaciones o contenidos descargables</string>
@@ -432,7 +432,7 @@
     <string name="install_game_content_help_link">https://yuzu-mirror.github.io/help/quickstart/#dumping-installed-updates</string>
     <string name="custom_driver_not_supported">Controladores personalizados no soportados</string>
     <string name="custom_driver_not_supported_description">La carga de controladores personalizados no está disponible para este dispositivo.\n¡Compruebe más adelante si se añadió el soporte a esta opción!</string>
-    <string name="manage_lemon_data">Gestionar datos de Lemon</string>
+    <string name="manage_lemon_data">Gestionar datos de Citrosis</string>
     <string name="manage_lemon_data_description">Importar/exportar el firmware, las claves, los datos de usuario, ¡y más!</string>
     <string name="game_folders">Carpetas de juegos</string>
     <string name="deep_scan">Escaneo recursivo </string>
@@ -494,17 +494,17 @@
     <string name="copied_to_clipboard">Copiado al portapapeles</string>
     <string name="about_app_description">Un emulador de Nintendo Switch, exclusivo para Android, hecho para GPUs Adreno</string>
     <string name="contributors">Colaboradores</string>
-    <string name="contributors_description">Las personas y proyectos sobre los que se construye Lemon</string>
-    <string name="patrons_thanks">¡Gracias a nuestros mecenas, Xefir y HungNguYen, por apoyar Lemon!</string>
+    <string name="contributors_description">Las personas y proyectos sobre los que se construye Citrosis</string>
+    <string name="patrons_thanks">¡Gracias a nuestros mecenas, Xefir y HungNguYen, por apoyar Citrosis!</string>
     <string name="team_link">https://lemon-emu.org/es/#team</string>
     <string name="logo_credit">Logo diseñado por Madeleine, que lo hizo de forma desinteresada y con muchísima paciencia. ¡Mil gracias, Madeleine!</string>
-    <string name="licenses_description">Proyectos que hacen que Lemon para Android sea posible</string>
+    <string name="licenses_description">Proyectos que hacen que Citrosis para Android sea posible</string>
     <string name="build">Compilación</string>
     <string name="user_data">Datos de usuario</string>
     <string name="user_data_description">Importar/exportar todos los datos de la app.\n\nCuando se importa datos de usuario, todos los datos de usuario existentes serán eliminados!\n\nImportando datos de Citron puede causar problemas. Es recomendado manualmente importar todos los datos necesarios.</string>
     <string name="exporting_user_data">Exportando datos de usuario...</string>
     <string name="importing_user_data">Importando datos de usuario...</string>
-    <string name="invalid_lemon_backup">Copia de seguridad de Lemon inválida</string>
+    <string name="invalid_lemon_backup">Copia de seguridad de Citrosis inválida</string>
     <string name="user_data_export_success">Datos de usuario exportados con éxito</string>
     <string name="user_data_import_success">Datos de usuario importados con éxito</string>
     <string name="user_data_export_cancelled">Exportación cancelada</string>
@@ -660,7 +660,7 @@
     <string name="flush_by_line">Vaciar los registros de depuración por línea</string>
     <string name="flush_by_line_description">Vacía los registros de depuración en cada línea escrita, facilitando la depuración en casos de bloqueos o congelamientos.</string>
     <string name="log_filter">Filtro de registros</string>
-    <string name="log_filter_description">Controla las categorias de registros de Lemon. Por ejemplo: *:Info Service.LM:Debug</string>
+    <string name="log_filter_description">Controla las categorias de registros de Citrosis. Por ejemplo: *:Info Service.LM:Debug</string>
 
     <!-- GPU Logging strings -->
     <string name="gpu_logging_header">Registros de la GPU</string>
@@ -777,7 +777,7 @@
     <string name="settings_reset">Reiniciar ajustes</string>
     <string name="reset_everything">Restablecer todos los ajustes</string>
     <string name="reset_everything_description">Vuelve a los valores de una instalación nueva</string>
-    <string name="reset_everything_dialog_description">Todos los ajustes vuelven al valor que tiene una instalación nueva de Lemon: gráficos, sistema, controles y asignación de botones, audio, el diseño del mando en pantalla y las opciones de la app. Lo que hayas ajustado tú, como la resolución, el modo de la GPU o el driver gráfico, vuelve al valor por defecto. Se conservan tus carpetas de juegos, las ubicaciones de almacenamiento, las claves, el firmware y las partidas. Esta acción no se puede deshacer.</string>
+    <string name="reset_everything_dialog_description">Todos los ajustes vuelven al valor que tiene una instalación nueva de Citrosis: gráficos, sistema, controles y asignación de botones, audio, el diseño del mando en pantalla y las opciones de la app. Lo que hayas ajustado tú, como la resolución, el modo de la GPU o el driver gráfico, vuelve al valor por defecto. Se conservan tus carpetas de juegos, las ubicaciones de almacenamiento, las claves, el firmware y las partidas. Esta acción no se puede deshacer.</string>
     <string name="reset_everything_delete_game_settings">Borrar también los ajustes personalizados de cada juego</string>
     <string name="reset_everything_delete_game_settings_hint">Cada juego vuelve a usar los ajustes generales. Esto también elimina su diseño de mando propio y cuáles de sus actualizaciones, DLC y mods estaban desactivados.</string>
     <string name="reset_everything_confirm">Restablecer</string>
@@ -820,7 +820,7 @@
     <string name="installed_label">%1$s (Instalado)</string>
     <string name="system_gpu_driver">Controlador de la GPU del sistema</string>
     <string name="bundled_driver_reverted_title">Se ha vuelto al controlador de GPU del sistema</string>
-    <string name="bundled_driver_reverted_description">El controlador Lemon-Ade integrado cerró la app antes de que el juego mostrara nada, así que Lemon ha vuelto al controlador del sistema de tu dispositivo. Puedes elegir otro controlador en Ajustes &gt; Gestor de controladores de GPU.</string>
+    <string name="bundled_driver_reverted_description">El controlador Citrosis bundled Turnip integrado cerró la app antes de que el juego mostrara nada, así que Citrosis ha vuelto al controlador del sistema de tu dispositivo. Puedes elegir otro controlador en Ajustes &gt; Gestor de controladores de GPU.</string>
     <string name="installing_driver">Instalando controlador...</string>
 
     <!-- GPU driver fetcher -->
@@ -927,7 +927,7 @@
     <string name="clear_shader_cache_warning_description">Experimentará más tirones mientras se regenera la caché de los sombreadores</string>
     <string name="cleared_shaders_successfully">Sombreadores limpiados con éxito</string>
     <string name="driver_shader_wipe_dialog_title">Sombreadores limpiados</string>
-    <string name="driver_shader_wipe_dialog_message">Lemon ha limpiado automáticamente todos los sombreadores guardados para mantener la canalización de Vulkan válida. Esto es esencial al cambiar o actualizar los controladores de la GPU para prevenir errores y fallos gráficos. Es posible que experimente algunas interrupciones durante la reconstrucción de los sombreadores.</string>
+    <string name="driver_shader_wipe_dialog_message">Citrosis ha limpiado automáticamente todos los sombreadores guardados para mantener la canalización de Vulkan válida. Esto es esencial al cambiar o actualizar los controladores de la GPU para prevenir errores y fallos gráficos. Es posible que experimente algunas interrupciones durante la reconstrucción de los sombreadores.</string>
     <string name="addons_game">Complementos: %1$s</string>
     <string name="save_data">Datos de guardado</string>
     <string name="save_data_description">Gestiona los datos de guardado de este juego</string>
@@ -1220,7 +1220,7 @@
     <string name="enable_qlaunch_button">QLaunch</string>
     <string name="enable_qlaunch_button_description">Mostrar el botón para ejecutar QLaunch</string>
     <string name="boot_into_qlaunch">Iniciar en QLaunch</string>
-    <string name="boot_into_qlaunch_description">Al abrir Lemon desde el lanzador se inicia QLaunch, el menú principal de la consola. Necesita el firmware.</string>
+    <string name="boot_into_qlaunch_description">Al abrir Citrosis desde el lanzador se inicia QLaunch, el menú principal de la consola. Necesita el firmware.</string>
 
     <!-- App Language -->
     <string name="app_language">Idioma de la aplicación</string>
@@ -1228,7 +1228,7 @@
     <string name="app_language_system">Igual al del sistema</string>
     <!-- Static Themes -->
     <string name="static_theme_color">Color del tema</string>
-    <string name="lemon_theme">Lemon</string>
+    <string name="lemon_theme">Citrosis</string>
     <string name="violet">Violeta</string>
     <string name="blue">Azul</string>
     <string name="cyan">Cian</string>
@@ -1274,10 +1274,10 @@
     <string name="settings_online_description">Nextendo Network, multijugador local y modo avión</string>
     <string name="settings_content">Contenido y datos</string>
     <string name="settings_content_description">Carpetas de juegos, claves y firmware, partidas guardadas y rutas</string>
-    <string name="settings_lemon">Lemon</string>
+    <string name="settings_lemon">Citrosis</string>
     <string name="settings_lemon_description">Idioma de la app, aspecto, actualizaciones y botones de la biblioteca</string>
     <string name="settings_help">Ayuda</string>
-    <string name="settings_help_description">Compartir registros, información del sistema y acerca de Lemon</string>
+    <string name="settings_help_description">Compartir registros, información del sistema y acerca de Citrosis</string>
     <string name="settings_advanced_debug">Avanzado y depuración</string>
     <string name="settings_advanced_debug_description">Opciones de CPU, registros y herramientas de desarrollo</string>
     <string name="settings_graphics_advanced">Gráficos avanzados</string>
@@ -1292,17 +1292,6 @@
     <string name="settings_local_multiplayer">Multijugador local</string>
     <string name="share_logs">Compartir registros</string>
     <string name="share_logs_description">Envía el registro del emulador, de la GPU o de cierres al reportar un problema</string>
-    <string name="nextendo_network">Nextendo Network</string>
-    <string name="nextendo_network_description">Juego en línea en servidores de la comunidad</string>
-    <string name="nextendo_enable">Juego en línea con Nextendo Network</string>
-    <string name="nextendo_enable_description">Envía el tráfico en línea de los juegos a los servidores de Nextendo Network en lugar de a los de Nintendo. Necesita una cuenta de Nextendo.</string>
-    <string name="nextendo_sign_in">Iniciar sesión</string>
-    <string name="nextendo_sign_in_description">Abre nextendo.network en el navegador. Lemon nunca ve tu contraseña.</string>
-    <string name="nextendo_sign_in_failed">No se pudo iniciar sesión en Nextendo Network (%1$s)</string>
-    <string name="nextendo_sign_out">Cerrar sesión</string>
-    <string name="nextendo_signed_in_as">Sesión iniciada como %1$s</string>
-    <string name="nextendo_unavailable">Esta versión de Lemon aún no está registrada en Nextendo Network.</string>
-    <string name="nextendo_no_game_token">No se pudo conectar con Nextendo Network. El juego en línea no funcionará en esta sesión; revisa tu conexión y vuelve a abrir el juego.</string>
 
     <string name="enable_overlay">Habilitar el applet de superposición</string>
     <string name="enable_overlay_description">Activa el applet integrado superpuesto de Horizon. Mantenga pulsado el botón de inicio durante 1 segundo para que aparezca.</string>
@@ -1367,13 +1356,13 @@
     <string name="post_processing_preset_delete">Eliminar preajuste</string>
     <string name="post_processing_preset_reset">Restablecer valores del preajuste</string>
     <string name="post_processing_empty">No se encontraron efectos. Coloca archivos .fx en esta carpeta:</string>
-    <string name="frame_gen_description">Inserta fotogramas generados entre los renderizados, con Lemon FG (integrado) o Lossless Scaling (necesita tu propia copia de Lossless.dll). Fuerza la presentación FIFO mientras está activado.</string>
+    <string name="frame_gen_description">Inserta fotogramas generados entre los renderizados, con Citrosis FG (integrado) o Lossless Scaling (necesita tu propia copia de Lossless.dll). Fuerza la presentación FIFO mientras está activado.</string>
     <string name="frame_gen_engine">Motor</string>
-    <string name="frame_gen_engine_description">Lemon FG es la generación de fotogramas propia de Lemon: viene integrada, no necesita nada más y no lleva código de Lossless Scaling. Lossless Scaling usa los shaders de tu propia copia de Lossless.dll; si no está instalada, se usa Lemon FG.</string>
-    <string name="frame_gen_engine_lemon">Lemon FG</string>
-    <string name="lemon_fg_included">Lemon FG ya viene incluido</string>
-    <string name="lemon_fg_included_description">Lemon trae su propia generación de fotogramas, Lemon FG: no hay que instalar nada. Lossless.dll solo hace falta si prefieres la generación de fotogramas de Lossless Scaling y tienes tu propia copia.</string>
-    <string name="lemon_fg_use">Usar Lemon FG</string>
+    <string name="frame_gen_engine_description">Citrosis FG es la generación de fotogramas propia de Citrosis: viene integrada, no necesita nada más y no lleva código de Lossless Scaling. Lossless Scaling usa los shaders de tu propia copia de Lossless.dll; si no está instalada, se usa Citrosis FG.</string>
+    <string name="frame_gen_engine_lemon">Citrosis FG</string>
+    <string name="lemon_fg_included">Citrosis FG ya viene incluido</string>
+    <string name="lemon_fg_included_description">Citrosis trae su propia generación de fotogramas, Citrosis FG: no hay que instalar nada. Lossless.dll solo hace falta si prefieres la generación de fotogramas de Lossless Scaling y tienes tu propia copia.</string>
+    <string name="lemon_fg_use">Usar Citrosis FG</string>
     <string name="lossless_scaling_load_anyway">Cargar Lossless.dll</string>
     <string name="frame_gen_engine_lossless">Lossless Scaling</string>
     <string name="frame_gen_multiplier_description">Cuántos fotogramas se muestran por cada fotograma renderizado. Los valores altos cuestan proporcionalmente más tiempo de GPU. Pedir más de lo que tu pantalla puede mostrar ralentizará la emulación.</string>
@@ -1391,11 +1380,11 @@
     <string name="frame_gen_flow_scale_auto_description">Estima el movimiento a la resolución a la que el juego renderiza en realidad, en lugar de la salida escalada. No pierde precisión, porque escalar no añade detalle de movimiento.</string>
     <string name="frame_gen_flow_scale">Resolución de la estimación de movimiento</string>
     <string name="frame_gen_flow_scale_description">Resolución del paso de flujo óptico, como fracción de la salida. Reducirla es la forma más barata de recuperar rendimiento.</string>
-    <string name="frame_gen_unsupported_description">Este controlador de GPU no admite Lemon FG (necesita aritmética de subgrupos en compute shaders) ni Lossless Scaling (necesita el modelo de memoria de Vulkan y media precisión, float16).</string>
-    <string name="lossless_scaling_setup_description">Opcional. Aporta tu propio Lossless.dll para usar la generación de fotogramas de Lossless Scaling en lugar de Lemon FG</string>
+    <string name="frame_gen_unsupported_description">Este controlador de GPU no admite Citrosis FG (necesita aritmética de subgrupos en compute shaders) ni Lossless Scaling (necesita el modelo de memoria de Vulkan y media precisión, float16).</string>
+    <string name="lossless_scaling_setup_description">Opcional. Aporta tu propio Lossless.dll para usar la generación de fotogramas de Lossless Scaling en lugar de Citrosis FG</string>
     <string name="lossless_scaling_install_description">La generación de fotogramas necesita tu propia copia legal de Lossless.dll de Lossless Scaling</string>
     <string name="frame_generation_unsupported">No compatible (sin modelo de memoria de Vulkan o float16)</string>
-    <string name="lossless_scaling_description">Aporta tu propia copia de Lossless.dll para usar la generación de fotogramas de Lossless Scaling en lugar de Lemon FG</string>
+    <string name="lossless_scaling_description">Aporta tu propia copia de Lossless.dll para usar la generación de fotogramas de Lossless Scaling en lugar de Citrosis FG</string>
     <string name="lossless_scaling_remove_confirmation">La generación de fotogramas dejará de funcionar hasta que vuelvas a instalar Lossless.dll. Tu archivo original no se ve afectado.</string>
     <string name="lossless_scaling_missing_description">Instálalo desde Ajustes › Lossless Scaling para usar la generación de fotogramas.</string>
     <string name="lossless_scaling_locked_description">Lossless.dll no se puede cambiar mientras hay un juego en ejecución.</string>
@@ -1411,7 +1400,7 @@
     <string name="home_hide_advanced_description">Oculta las opciones menos usadas</string>
     <string name="filter_favorites">Favoritos</string>
     <string name="share_crash_log">Compartir registro de fallos</string>
-    <string name="share_crash_log_description">Comparte el último fallo que registró Lemon para ayudar a informar de un error</string>
+    <string name="share_crash_log_description">Comparte el último fallo que registró Citrosis para ayudar a informar de un error</string>
     <string name="share_crash_log_missing">No se encontró ningún registro de fallos</string>
     <string name="github_link_button">GitHub (espejo)</string>
     <string name="discord_link_button">Discord</string>
@@ -1425,8 +1414,8 @@
     <string name="update_checking">Buscando actualizaciones…</string>
     <string name="update_none">No hay una versión más nueva, o no se pudo conectar con el servidor de actualizaciones.</string>
     <string name="update_open_page">Abrir la página de descarga</string>
-    <string name="whats_new_title">Novedades de Lemon 1.2</string>
-    <string name="whats_new_body">• Lemon FG: la generación de fotogramas propia de Lemon, integrada (Ajustes → Gráficos → Generación de fotograma). No hay que instalar nada; Lossless Scaling sigue como opción si tienes tu propia Lossless.dll.\n• Preciso vuelve a ser el modo de GPU por defecto: las optimizaciones de esta versión compensan su coste (Lemon Lite sigue en Rápido).\n• Una espera a la GPU más ligera: sin parpadeos y con menos parones, sin nada que ajustar.\n• Mali: los Inklings y los textos de los botones de Splatoon 2 y 3 se ven bien, y las texturas BC4/BC5 ocupan la mitad de memoria.\n• Adreno: Marvel Ultimate Alliance 3 sin pinchos ni luces que parpadean.\n• Mario Kart 8 Deluxe vuelve a conectar a Nextendo Network.\n• La hierba de TOTK se queda sin tocar ninguna opción, Splatoon 3 carga más rápido y se incluye Lemon-Ade v0.0.7.</string>
+    <string name="whats_new_title">Novedades de Citrosis 1.2</string>
+    <string name="whats_new_body">• Citrosis FG: la generación de fotogramas propia de Citrosis, integrada (Ajustes → Gráficos → Generación de fotograma). No hay que instalar nada; Lossless Scaling sigue como opción si tienes tu propia Lossless.dll.\n• Preciso vuelve a ser el modo de GPU por defecto: las optimizaciones de esta versión compensan su coste (Citrosis Lite sigue en Rápido).\n• Una espera a la GPU más ligera: sin parpadeos y con menos parones, sin nada que ajustar.\n• Mali: los Inklings y los textos de los botones de Splatoon 2 y 3 se ven bien, y las texturas BC4/BC5 ocupan la mitad de memoria.\n• Adreno: Marvel Ultimate Alliance 3 sin pinchos ni luces que parpadean.\n• Mario Kart 8 Deluxe vuelve a conectar a Nextendo Network.\n• La hierba de TOTK se queda sin tocar ninguna opción, Splatoon 3 carga más rápido y se incluye Citrosis bundled Turnip v0.0.7.</string>
     <string name="whats_new_got_it">Entendido</string>
     <string name="whats_new_read_more">Leer más</string>
     <string name="whats_new_link">https://lemon-emu.org/es/#features</string>
@@ -1446,9 +1435,9 @@
     <string name="adaptive_performance_description">Baja automáticamente los ajustes gráficos si el dispositivo se calienta o no da abasto, y te avisa cuando lo hace</string>
     <string name="thermal_throttle_applied">El dispositivo está caliente: se cambió al perfil de ahorro de batería</string>
     <string name="perf_throttle_applied">El rendimiento es bajo: se cambió al perfil de ahorro de batería</string>
-    <string name="adaptive_performance_notif_title">Lemon redujo los ajustes gráficos</string>
-    <string name="adaptive_performance_notif_thermal_text">Tu dispositivo se calentó demasiado, así que Lemon cambió al perfil de ahorro de batería. Toca para abrir Ajustes si quieres desactivarlo.</string>
-    <string name="adaptive_performance_notif_perf_text">Este juego iba muy por debajo de la velocidad completa, así que Lemon cambió al perfil de ahorro de batería. Toca para abrir Ajustes si quieres desactivarlo.</string>
+    <string name="adaptive_performance_notif_title">Citrosis redujo los ajustes gráficos</string>
+    <string name="adaptive_performance_notif_thermal_text">Tu dispositivo se calentó demasiado, así que Citrosis cambió al perfil de ahorro de batería. Toca para abrir Ajustes si quieres desactivarlo.</string>
+    <string name="adaptive_performance_notif_perf_text">Este juego iba muy por debajo de la velocidad completa, así que Citrosis cambió al perfil de ahorro de batería. Toca para abrir Ajustes si quieres desactivarlo.</string>
     <string name="enabled">Activado</string>
     <string name="preset_battery">Ahorro de batería</string>
     <string name="preset_balanced">Equilibrado</string>
@@ -1459,7 +1448,7 @@
     <string name="remove_from_favorites">Quitar de favoritos</string>
     <string name="add_to_home_screen">Añadir a la pantalla de inicio</string>
     <string name="widget_description">Inicia el último juego al que jugaste</string>
-    <string name="widget_no_recent_game">Abrir Lemon</string>
+    <string name="widget_no_recent_game">Abrir Citrosis</string>
     <string name="widget_game_icon_desc">Icono del juego</string>
     <string name="loader_requires_firmware_description"><![CDATA[Es posible que este juego necesite el firmware para funcionar bien y no tienes ninguno instalado. Instala el firmware antes de iniciarlo, o pulsa \"Aceptar\" para iniciarlo de todos modos.]]></string>
     <string name="emulation_quick_save_state">Guardado rápido</string>
@@ -1472,7 +1461,7 @@
     <string name="emulation_quick_load_state_incompatible">No se puede cargar: desde que guardaste, el juego hizo algo que la carga rápida todavía no sabe deshacer (o el guardado es de antes de cerrar la app). No se ha cambiado nada.</string>
     <string name="emulation_quick_save_state_working">Guardando…</string>
     <string name="emulation_quick_load_state_working">Cargando…</string>
-    <string name="lemon_cheater">Lemon Cheater</string>
+    <string name="lemon_cheater">Citrosis Cheater</string>
     <string name="lemon_cheater_value_hint">Valor</string>
     <string name="lemon_cheater_new_search">Nueva búsqueda</string>
     <string name="lemon_cheater_refine">Refinar</string>

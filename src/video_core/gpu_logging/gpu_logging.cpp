@@ -58,10 +58,10 @@ void GPULogger::Initialize(LogLevel level, DriverType driver) {
     [[maybe_unused]] const bool crashes_dir_created = CreateDir(crashes_dir);
 
     // Open GPU log file
-    const auto gpu_log_path = log_dir / "lemon_gpu.log";
+    const auto gpu_log_path = log_dir / "citrosis_gpu.log";
 
     // Rotate old log
-    const auto old_log_path = log_dir / "lemon_gpu.log.old.txt";
+    const auto old_log_path = log_dir / "citrosis_gpu.log.old.txt";
     RemoveFile(old_log_path);
     [[maybe_unused]] const bool log_renamed = RenameFile(gpu_log_path, old_log_path);
 
@@ -723,7 +723,7 @@ bool GPULogger::IsInitialized() const {
 void GPULogger::WriteToLog(const std::string& message) {
     using namespace Common::Literals;
     // At level "All" every Vulkan call is logged and the file grew past 100 MB in minutes. Keep
-    // each file under this size: the full one moves to lemon_gpu.log.prev.txt and a fresh one
+    // each file under this size: the full one moves to citrosis_gpu.log.prev.txt and a fresh one
     // starts, so the most recent 20-40 MB are always on disk.
     constexpr u64 MaxLogSize = 20_MiB;
 
@@ -738,8 +738,8 @@ void GPULogger::WriteToLog(const std::string& message) {
     if (bytes_written >= MaxLogSize) {
         using namespace Common::FS;
         const auto& log_dir = GetEdenPath(EdenPath::LogDir);
-        const auto gpu_log_path = log_dir / "lemon_gpu.log";
-        const auto prev_log_path = log_dir / "lemon_gpu.log.prev.txt";
+        const auto gpu_log_path = log_dir / "citrosis_gpu.log";
+        const auto prev_log_path = log_dir / "citrosis_gpu.log.prev.txt";
         gpu_log_file->Close();
         RemoveFile(prev_log_path);
         [[maybe_unused]] const bool renamed = RenameFile(gpu_log_path, prev_log_path);
@@ -749,7 +749,7 @@ void GPULogger::WriteToLog(const std::string& message) {
         if (gpu_log_file->IsOpen()) {
             bytes_written += gpu_log_file->WriteString(
                 "=== Lemon GPU log continued (size limit reached; the previous part is "
-                "lemon_gpu.log.prev.txt) ===\n");
+                "citrosis_gpu.log.prev.txt) ===\n");
         }
         return;
     }

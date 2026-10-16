@@ -55,10 +55,14 @@
 #include <mutex>
 #include <random>
 
+#include <atomic>
 #include "common/alignment.h"
 #include "common/assert.h"
 #include "common/free_region_manager.h"
 #include "common/host_memory.h"
+#if defined(__linux__)
+#include <linux/falloc.h>
+#endif
 #include "common/logging.h"
 
 #if defined(__ANDROID__) && __ANDROID_API__ < 30
@@ -235,6 +239,10 @@ public:
     void EnableDirectMappedAddress() {
         // TODO
         UNREACHABLE();
+    }
+
+    bool Discard(size_t, size_t) {
+        return false;
     }
 
     const size_t backing_size; ///< Size of the backing memory in bytes
@@ -573,7 +581,13 @@ public:
             return false;
         }
 #if defined(__linux__)
+#ifdef ANDROID
+        // Keep sparse zero/freed pages granular on unified-memory phones.
+        madvise(backing_base, backing_size, MADV_NOHUGEPAGE);
+        madvise(virtual_base, virtual_size, MADV_NOHUGEPAGE);
+#else
         madvise(virtual_base, virtual_size, MADV_HUGEPAGE);
+#endif
 #endif
         free_manager.SetAddressSpace(virtual_base, virtual_size);
         return true;
@@ -650,6 +664,15 @@ public:
 
     void EnableDirectMappedAddress() {
         virtual_base = nullptr;
+    }
+
+    bool Discard(size_t offset, size_t length) {
+#if defined(__linux__)
+        return fd >= 0 && fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
+                                    static_cast<off_t>(offset), static_cast<off_t>(length)) == 0;
+#else
+        return false;
+#endif
     }
 
     const size_t backing_size; ///< Size of the backing memory in bytes
@@ -804,7 +827,60 @@ void HostMemory::Protect(size_t virtual_offset, size_t length, MemoryPermission 
 #endif
 }
 
+namespace {
+// Below this, zeroing in place is cheaper than a syscall plus the page faults that refill it.
+constexpr size_t DiscardThreshold = 64 * 1024;
+constexpr size_t DiscardAlignment = 0x1000;
+#ifdef ANDROID
+// Small freed allocations also accumulate in a long-running game. Keep the larger
+// threshold for zero fills, but reclaim freed guest pages even below 64 KiB.
+constexpr size_t FreeDiscardThreshold = DiscardAlignment;
+#else
+constexpr size_t FreeDiscardThreshold = DiscardThreshold;
+#endif
+std::atomic<bool> g_discard_enabled{true};
+} // namespace
+
+void HostMemory::SetDiscardEnabled(bool enabled) {
+    g_discard_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool HostMemory::DiscardBackingRegion(size_t physical_offset, size_t length) {
+    if (!impl || !g_discard_enabled.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    const size_t begin = AlignUp(physical_offset, DiscardAlignment);
+    const size_t end = AlignDown(physical_offset + length, DiscardAlignment);
+    if (end <= begin || end - begin < FreeDiscardThreshold) {
+        return false;
+    }
+    if (!impl->Discard(begin, end - begin)) {
+        // The backing cannot punch holes (old kernel, non-Linux): stop trying.
+        g_discard_enabled.store(false, std::memory_order_relaxed);
+        LOG_WARNING(HW_Memory,
+                    "Backing memory cannot discard pages ({}); freed guest memory "
+                    "stays resident",
+                    std::strerror(errno));
+        return false;
+    }
+    return true;
+}
+
 void HostMemory::ClearBackingRegion(size_t physical_offset, size_t length, u32 fill_value) {
+    // Zero fill is the common case (heap and IPC fill values are 0 on retail titles). Rather than
+    // touching every page, which makes all of it resident at once even if the game never uses
+    // it, punch the pages out of the backing file: they read back as zero and only become
+    // resident when the game writes them. On an 8 GB phone this is the difference between a
+    // multi-GiB heap reservation costing its full size and costing what the game really uses.
+    if (fill_value == 0 && length >= DiscardThreshold) {
+        const size_t begin = AlignUp(physical_offset, DiscardAlignment);
+        const size_t end = AlignDown(physical_offset + length, DiscardAlignment);
+        if (end > begin && DiscardBackingRegion(begin, end - begin)) {
+            std::memset(backing_base + physical_offset, 0, begin - physical_offset);
+            std::memset(backing_base + end, 0, physical_offset + length - end);
+            return;
+        }
+    }
     std::memset(backing_base + physical_offset, fill_value, length);
 }
 

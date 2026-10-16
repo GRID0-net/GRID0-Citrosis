@@ -1,0 +1,59 @@
+{
+  "project": "Citrosis Android",
+  "upstream": "https://github.com/Ghael-V/Lemon-Project",
+  "upstream_commit": "7fcd6ae60b74e36cce2eb06c0c39492bd636b8ec",
+  "donor": "/Users/lizzy/GRID0-citron",
+  "donor_commit": "f105ae2c703c64f641e858de9c9466c256f22cb9",
+  "donor_worktree_diff_sha256": "842239f3587091aa7149b9b9803ee96b39ecd8528935d59e6fdbe757da1aa30c",
+  "ported": [
+    "physical RAM and MemAvailable budgets",
+    "sparse zero fill and freed guest page discard",
+    "texture/buffer GC pressure controls",
+    "bounded staging ring and frame-boundary reclamation",
+    "native pressure monitor and trim callbacks",
+    "GRID0+ account token and account ID",
+    "friends requests and presence",
+    "BCAT delivery cache",
+    "private-server DNS and CA trust",
+    "exact-build Splatoon 3 toolbox IPS files",
+    "eventfd and deferred polling",
+    "LAN adapter selection and multicast lock",
+    "HDR float sanitization and ARM64 NEON/fused CPU-side copies"
+  ],
+  "retained_upstream": [
+    "NCE and ARM64 instruction machinery",
+    "Vulkan shader and pipeline compilation",
+    "Lemon BCn/Mali conversion and frame generation",
+    "savestate core/kernel implementation"
+  ],
+  "validation": {
+    "build_run": false,
+    "tests_run": false,
+    "device_run": false,
+    "user_reported": {
+      "date": "2026-10-16",
+      "result": "User confirmed the latest Android build worked after ssl:s certificate/context and NIFM readiness fixes; no independent agent verification."
+    }
+  },
+  "removed_upstream": [
+    "Nextendo account/session provider, settings and Android sign-in UI"
+  ],
+  "grid0_updates": [
+    {
+      "date": "2026-10-15",
+      "repository": "https://github.com/GRID0-net/GRID0-citron",
+      "commit": "8194d1295f9651477b7ce148813179b99c2fce3f",
+      "description": "GRID0+ Toolbox 0.8.10 assigned-peer readiness gate for Splatoon 3 11.3.0",
+      "files": [
+        {
+          "path": "src/core/file_sys/private_server_patches/s3smallmatch_bypass.28C4287AEE36F7499DA60F3E68B54C70DA382D75.ips",
+          "sha256": "a855cfec093a8c8f0cb441ceb46da44f8afbb07d293fba102f14ee2415310fa6",
+          "bytes": 1035
+        }
+      ],
+      "validation": "Source and IPS structure review only; no builds or device tests"
+    }
+  ],
+  "repository": "https://github.com/GRID0-net/GRID0-citron",
+  "android_branch": "codex/citrosis-android"
+}

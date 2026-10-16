@@ -73,8 +73,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.lemon.lemon_emulator"
-        minSdk = 24
+        applicationId = "net.grid0.citrosis"
+        minSdk = 30
         targetSdk = 36
         versionName = getGitVersion()
         versionCode = autoVersion
@@ -125,13 +125,12 @@ android {
 
                 if (isNightly) {
                     arguments.addAll(listOf(
-                        "-DENABLE_UPDATE_CHECKER=ON",
+                        "-DENABLE_UPDATE_CHECKER=OFF",
                         "-DNIGHTLY_BUILD=ON",
                     ))
                 } else {
-                    // The mainline/standard build is what actually gets published to GitHub
-                    // Releases - it needs the update checker too, not just nightly.
-                    arguments.add("-DENABLE_UPDATE_CHECKER=ON")
+                    // Citrosis must not offer a Lemon APK as a downstream app update.
+                    arguments.add("-DENABLE_UPDATE_CHECKER=OFF")
                 }
 
                 abiFilters("arm64-v8a")
@@ -244,8 +243,8 @@ android {
             // APerformanceHint).
             minSdk = 31
 
-            manifestPlaceholders += mapOf("appNameBase" to "Lemon")
-            resValue("string", "app_name_suffixed", "Lemon")
+            manifestPlaceholders += mapOf("appNameBase" to "Citrosis")
+            resValue("string", "app_name_suffixed", "Citrosis")
 
             ndk {
                 abiFilters += listOf("arm64-v8a")
@@ -257,8 +256,8 @@ android {
         create("lite") {
             dimension = "version"
             minSdk = 31
-            manifestPlaceholders += mapOf("appNameBase" to "Lemon Lite")
-            resValue("string", "app_name_suffixed", "Lemon Lite")
+            manifestPlaceholders += mapOf("appNameBase" to "Citrosis Lite")
+            resValue("string", "app_name_suffixed", "Citrosis Lite")
             applicationId = "dev.lemon.lemon_emulator.lite"
 
             externalNativeBuild {
@@ -283,8 +282,8 @@ android {
         create("liteSpoofed") {
             dimension = "version"
             minSdk = 31
-            manifestPlaceholders += mapOf("appNameBase" to "Lemon Lite Spoofed")
-            resValue("string", "app_name_suffixed", "Lemon Lite Spoofed")
+            manifestPlaceholders += mapOf("appNameBase" to "Citrosis Lite Spoofed")
+            resValue("string", "app_name_suffixed", "Citrosis Lite Spoofed")
             applicationId = "com.antutu.ABenchMark"
 
             externalNativeBuild {
@@ -307,8 +306,8 @@ android {
         create("genshinSpoof") {
             dimension = "version"
             minSdk = 35
-            manifestPlaceholders += mapOf("appNameBase" to "Lemon Optimized")
-            resValue("string", "app_name_suffixed", "Lemon Optimized")
+            manifestPlaceholders += mapOf("appNameBase" to "Citrosis Optimized")
+            resValue("string", "app_name_suffixed", "Citrosis Optimized")
             applicationId = "com.miHoYo.Yuanshen"
 
             externalNativeBuild {
@@ -325,8 +324,8 @@ android {
         create("legacy") {
             dimension = "version"
             minSdk = 29
-            manifestPlaceholders += mapOf("appNameBase" to "Lemon Legacy")
-            resValue("string", "app_name_suffixed", "Lemon Legacy")
+            manifestPlaceholders += mapOf("appNameBase" to "Citrosis Legacy")
+            resValue("string", "app_name_suffixed", "Citrosis Legacy")
             applicationId = "dev.legacy.lemon_emulator"
 
             externalNativeBuild {
@@ -356,12 +355,12 @@ android {
     }
 
     productFlavors.all {
-        val currentName = manifestPlaceholders["appNameBase"] as? String ?: "Lemon"
+        val currentName = manifestPlaceholders["appNameBase"] as? String ?: "Citrosis"
         val suffix = if (isExperimental) " Experimental" else if (isNightly) " Nightly" else ""
 
         // apply nightly/experimental suffix I/A
         resValue("string", "app_name_suffixed", "$currentName$suffix")
-        resValue("string", "app_name", "Lemon$suffix")
+        resValue("string", "app_name", "Citrosis$suffix")
     }
 
     sourceSets {

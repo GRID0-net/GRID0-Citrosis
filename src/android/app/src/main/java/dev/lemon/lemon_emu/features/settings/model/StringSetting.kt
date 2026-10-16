@@ -9,6 +9,13 @@ package dev.lemon.lemon_emu.features.settings.model
 import dev.lemon.lemon_emu.utils.NativeConfig
 
 enum class StringSetting(override val key: String) : AbstractStringSetting {
+    NETWORK_INTERFACE("network_interface"),
+    SWITCHNET_USERNAME("switchnet_username"),
+    SWITCHNET_PASSWORD("switchnet_password"),
+    SWITCHNET_SERVER("switchnet_server"),
+    PRIVATE_SERVER_ADDRESS("private_server_address"),
+    PRIVATE_SERVER_NAT_SECONDARY_ADDRESS("private_server_nat_secondary_address"),
+    PRIVATE_SERVER_CA_BUNDLE("private_server_ca_bundle"),
     DRIVER_PATH("driver_path"),
     DEVICE_NAME("device_name"),
     LOG_FILTER("log_filter"),

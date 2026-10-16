@@ -70,7 +70,6 @@ object SettingsSearchIndex {
         "use_asynchronous_shaders" to "stutter tirones shader cache",
         "aspect_ratio" to "widescreen panoramica franjas bars stretch estirar 21:9",
         "use_docked_mode" to "dock tv portatil handheld",
-        "enable_nextendo" to "online internet multiplayer mario kart",
         "language_index" to "idioma language",
         "bcn_astc_recompression" to "mali textures texturas memory memoria",
         "cpu_backend" to "nce dynarmic jit"

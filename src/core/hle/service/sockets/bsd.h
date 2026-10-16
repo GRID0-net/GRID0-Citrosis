@@ -1,15 +1,20 @@
-// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
-// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
+// SPDX-FileCopyrightText: Copyright 2025 citron Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <array>
+#include <chrono>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <span>
+#include <tuple>
 #include <vector>
-#include <variant>
 
+#include <variant>
 #include "common/common_types.h"
 #include "common/socket_types.h"
 #include "core/hle/service/service.h"
@@ -27,6 +32,8 @@ class Socket;
 
 namespace Service::Sockets {
 
+class DeferredPollWaker;
+
 class BSD_USA final : public ServiceFramework<BSD_USA> {
 public:
     explicit BSD_USA(Core::System& system_, const char* name, bool is_user);
@@ -39,14 +46,33 @@ public:
     Errno CloseImpl(s32 fd);
     std::optional<std::shared_ptr<Network::SocketBase>> GetSocket(s32 fd);
 
+    /// Lets polls that include an eventfd defer their reply; see DeferredPollWaker.
+    void SetDeferredPollWaker(std::shared_ptr<DeferredPollWaker> waker);
+
 private:
     /// Maximum number of file descriptors
     static constexpr size_t MAX_FD = 128;
 
+    /// An eventfd: a counter guest threads use to wake each other, not a host socket. gRPC's
+    /// event loop polls one alongside its sockets.
+    struct EventFdState {
+        std::mutex mutex;
+        u64 value = 0;
+        bool semaphore = false;
+    };
+
     struct FileDescriptor {
         std::shared_ptr<Network::SocketBase> socket;
+        std::shared_ptr<EventFdState> eventfd;
         s32 flags = 0;
         bool is_connection_based = false;
+        Network::Domain domain = Network::Domain::INET;
+        Network::Type type = Network::Type::DGRAM;
+        Network::Protocol protocol = Network::Protocol::UDP;
+        // Every option value the guest set successfully, keyed by (level << 32 | optname), so
+        // getsockopt can report it back. gRPC sets each option and then reads it to verify,
+        // closing the socket before connecting if the read fails.
+        std::map<u64, std::vector<u8>> set_options;
     };
 
     struct PollWork {
@@ -99,6 +125,7 @@ private:
         u32 flags;
         std::vector<u8> message;
         std::vector<u8> addr;
+        u32 addr_length{};
         s32 ret{};
         Errno bsd_errno{};
     };
@@ -129,7 +156,6 @@ private:
     void RegisterClient(HLERequestContext& ctx);
     void StartMonitoring(HLERequestContext& ctx);
     void Socket(HLERequestContext& ctx);
-    void SocketExempt(HLERequestContext& ctx);
     void Select(HLERequestContext& ctx);
     void Poll(HLERequestContext& ctx);
     void Accept(HLERequestContext& ctx);
@@ -140,7 +166,6 @@ private:
     void GetSockOpt(HLERequestContext& ctx);
     void Listen(HLERequestContext& ctx);
     void Fcntl(HLERequestContext& ctx);
-    void Ioctl(HLERequestContext& ctx);
     void SetSockOpt(HLERequestContext& ctx);
     void Shutdown(HLERequestContext& ctx);
     void Recv(HLERequestContext& ctx);
@@ -153,11 +178,33 @@ private:
     void DuplicateSocket(HLERequestContext& ctx);
     void EventFd(HLERequestContext& ctx);
 
+    // [Zephyron] Added declarations based on Switchbrew documentation
+    void SocketExempt(HLERequestContext& ctx);
+    void Open(HLERequestContext& ctx);
+    void Sysctl(HLERequestContext& ctx);
+    void Ioctl(HLERequestContext& ctx);
+    void ShutdownAllSockets(HLERequestContext& ctx);
+    void GetResourceStatistics(HLERequestContext& ctx);
+    void RecvMMsg(HLERequestContext& ctx);
+    void SendMMsg(HLERequestContext& ctx);
+    void RegisterResourceStatisticsName(HLERequestContext& ctx);
+    void RegisterClientShared(HLERequestContext& ctx);
+    void GetSocketStatistics(HLERequestContext& ctx);
+    void NifIoctl(HLERequestContext& ctx);          // [17.0.0+]
+    void Unknown36(HLERequestContext& ctx);         // [18.0.0+] undocumented
+    void Unknown37(HLERequestContext& ctx);         // [18.0.0+] undocumented
+    void Unknown38(HLERequestContext& ctx);         // [18.0.0+] undocumented
+    void Unknown39(HLERequestContext& ctx);         // [20.0.0+] undocumented
+    void Unknown40(HLERequestContext& ctx);         // [20.0.0+] undocumented
+    void SetThreadCoreMask(HLERequestContext& ctx); // [15.0.0+]
+    void GetThreadCoreMask(HLERequestContext& ctx); // [15.0.0+]
+
     template <typename Work>
     void ExecuteWork(HLERequestContext& ctx, Work work);
 
     std::pair<s32, Errno> SocketImpl(Domain domain, Type type, Protocol protocol);
-    std::pair<s32, Errno> PollImpl(std::vector<u8>& write_buffer, std::span<const u8> read_buffer, s32 nfds, s32 timeout);
+    std::pair<s32, Errno> PollImpl(std::vector<u8>& write_buffer, std::span<const u8> read_buffer,
+                                   s32 nfds, s32 timeout);
     std::pair<s32, Errno> AcceptImpl(s32 fd, std::vector<u8>& write_buffer);
     Errno BindImpl(s32 fd, std::span<const u8> addr);
     Errno ConnectImpl(s32 fd, std::span<const u8> addr);
@@ -165,14 +212,12 @@ private:
     Errno GetSockNameImpl(s32 fd, std::vector<u8>& write_buffer);
     Errno ListenImpl(s32 fd, s32 backlog);
     std::pair<s32, Errno> FcntlImpl(s32 fd, FcntlCmd cmd, s32 arg);
-    std::pair<s32, Errno> IoctlImpl(s32 fd, u32 request, std::span<const u8> in,
-                                    std::vector<u8>& out);
     Errno GetSockOptImpl(s32 fd, u32 level, OptName optname, std::vector<u8>& optval);
     Errno SetSockOptImpl(s32 fd, u32 level, OptName optname, std::span<const u8> optval);
     Errno ShutdownImpl(s32 fd, s32 how);
     std::pair<s32, Errno> RecvImpl(s32 fd, u32 flags, std::vector<u8>& message);
     std::pair<s32, Errno> RecvFromImpl(s32 fd, u32 flags, std::vector<u8>& message,
-                                       std::vector<u8>& addr);
+                                       std::vector<u8>& addr, u32& addr_length);
     std::pair<s32, Errno> SendImpl(s32 fd, u32 flags, std::span<const u8> message);
     std::pair<s32, Errno> SendToImpl(s32 fd, u32 flags, std::span<const u8> message,
                                      std::span<const u8> addr);
@@ -182,7 +227,27 @@ private:
 
     void BuildErrnoResponse(HLERequestContext& ctx, Errno bsd_errno) const noexcept;
 
-    static inline std::array<std::optional<FileDescriptor>, MAX_FD> file_descriptors{};
+    bool PollIncludesEventFd(std::span<const u8> read_buffer, s32 nfds);
+    /// Whether this request is a deferred poll being re-run.
+    bool IsDeferredPoll(const HLERequestContext& ctx);
+    std::pair<s32, Errno> PollOnce(std::vector<u8>& write_buffer, std::span<const u8> read_buffer,
+                                   s32 nfds);
+    void PollWithEventFd(HLERequestContext& ctx, s32 nfds, s32 timeout);
+    std::shared_ptr<EventFdState> GetEventFd(s32 fd);
+
+    struct DeferredPoll {
+        std::chrono::steady_clock::time_point deadline;
+        std::chrono::steady_clock::time_point last_run;
+        /// The pollfd array as the guest sent it; see PollWithEventFd.
+        std::vector<u8> pollfds;
+    };
+    std::shared_ptr<DeferredPollWaker> deferred_poll_waker;
+    std::mutex deferred_polls_mutex;
+    std::map<const HLERequestContext*, DeferredPoll> deferred_polls;
+
+    bool is_user = false;
+    std::array<std::optional<FileDescriptor>, MAX_FD> file_descriptors;
+    std::mutex fd_table_mutex; // Protects access to the file_descriptors array
 
     /// Callback to parse and handle a received wifi packet.
     void OnProxyPacketReceived(const Network::ProxyPacket& packet);
@@ -190,9 +255,22 @@ private:
     // Callback identifier for the OnProxyPacketReceived event.
     Network::RoomMember::CallbackHandle<Network::ProxyPacket> proxy_packet_received;
 
+    /// Socket pool to cache and reuse ProxySocket instances
+    struct SocketPoolKey {
+        Network::Domain domain;
+        Network::Type type;
+        Network::Protocol protocol;
+
+        bool operator<(const SocketPoolKey& other) const {
+            return std::tie(domain, type, protocol) <
+                   std::tie(other.domain, other.type, other.protocol);
+        }
+    };
+    std::map<SocketPoolKey, std::vector<std::shared_ptr<Network::SocketBase>>> socket_pool;
+    std::mutex socket_pool_mutex;
+
 protected:
-    std::unique_lock<std::mutex> LockService() noexcept override;
-    bool is_user = false;
+    virtual std::unique_lock<std::mutex> LockService() noexcept override;
 };
 
 class BSDCFG final : public ServiceFramework<BSDCFG> {
