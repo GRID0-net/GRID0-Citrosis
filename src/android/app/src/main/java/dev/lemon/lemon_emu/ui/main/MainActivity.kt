@@ -57,6 +57,7 @@ import dev.lemon.lemon_emu.features.settings.model.BooleanSetting
 import dev.lemon.lemon_emu.LemonApplication
 import dev.lemon.lemon_emu.updater.APKDownloader
 import dev.lemon.lemon_emu.updater.APKInstaller
+import dev.lemon.lemon_emu.updater.Grid0PatchUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -186,6 +187,8 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
             if (!WhatsNewDialogFragment.onAppLaunch(this, supportFragmentManager)) {
                 SupportDialogFragment.onAppLaunch(this, supportFragmentManager)
             }
+            // Every launch: the Splatoon 3 patches are downloaded, never bundled.
+            Grid0PatchUpdater.checkOnLaunch(this)
             if (NativeLibrary.isUpdateCheckerEnabled() &&
                 BooleanSetting.ENABLE_UPDATE_CHECKS.getBoolean()
             ) {

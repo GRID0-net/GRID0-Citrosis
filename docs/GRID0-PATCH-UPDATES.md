@@ -1,5 +1,16 @@
 # GRID0+ patch updates
 
+## 2026-10-16 — patches are downloaded, not embedded
+
+No patch ships inside the APK any more. At every launch the app compares
+`<user dir>/grid0plus/patches/` with the newest `patches-<serial>` release of
+GRID0-net/GRID0plus-cfw (the release the console Toolbox installs from) and, if
+anything differs, asks to download it. Each file is checked against the
+release manifest's SHA-256 before it is written
+(`updater/Grid0PatchUpdater.kt`); the native loader reads the folder
+(`core/file_sys/private_server_patches.cpp`). The embedded IPS files and their
+CMake generator are gone, so the entry below describes history only.
+
 ## 2026-10-15 — Toolbox 0.8.10 assigned-peer readiness gate
 
 Source: GRID0-net/GRID0-citron commit

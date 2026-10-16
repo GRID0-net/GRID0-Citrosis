@@ -870,15 +870,24 @@ private:
         LOG_DEBUG(Service_ACC, "called");
 
         const u64 account_id = NetworkServiceAccountId();
+        // The SDK's GetBirthday reads a NUL-terminated date from the start of this record
+        // (NextendoNetwork citron d8cdcd9, "Splat 3 Plaza posts fix"); all zeros reads as an
+        // empty birthday. The record is the fixed-size C (pointer) buffer; WriteBuffer(…, 0)
+        // would prefer B slot 0, which is the separate type-6 out buffer. Same as GRID0-citron
+        // main 3c93e8e16d.
         std::vector<u8> nas_user_base_for_application(0x68);
-        if (SwitchNet::IsConfigured()) {
-            std::memcpy(nas_user_base_for_application.data(), &account_id, sizeof(account_id));
+        constexpr char birthday[] = "2000-01-01";
+        std::memcpy(nas_user_base_for_application.data(), birthday, sizeof(birthday));
+        if (!ctx.BufferDescriptorC().empty() && ctx.BufferDescriptorC()[0].Size() > 0) {
+            ctx.WriteBufferC(nas_user_base_for_application.data(),
+                             std::min<std::size_t>(nas_user_base_for_application.size(),
+                                                   ctx.BufferDescriptorC()[0].Size()),
+                             0);
         }
-        ctx.WriteBuffer(nas_user_base_for_application);
 
-        if (ctx.CanWriteBuffer(1)) {
-            std::vector<u8> unknown_out_buffer(ctx.GetWriteBufferSize(1));
-            ctx.WriteBuffer(unknown_out_buffer, 1);
+        if (!ctx.BufferDescriptorB().empty() && ctx.BufferDescriptorB()[0].Size() > 0) {
+            std::vector<u8> unknown_out_buffer(ctx.BufferDescriptorB()[0].Size());
+            ctx.WriteBufferB(unknown_out_buffer.data(), unknown_out_buffer.size(), 0);
         }
 
         IPC::ResponseBuilder rb{ctx, 4};

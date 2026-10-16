@@ -1295,7 +1295,3 @@ endif()
 
 create_target_directory_groups(core)
 
-include(GeneratePrivateServerPatches)
-generate_private_server_patches("${CMAKE_CURRENT_SOURCE_DIR}/file_sys/private_server_patches"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/private_server_patches_data.inc")
-target_include_directories(core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

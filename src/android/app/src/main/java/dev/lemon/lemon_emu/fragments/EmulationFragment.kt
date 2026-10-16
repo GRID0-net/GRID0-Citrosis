@@ -7,6 +7,7 @@
 
 package dev.lemon.lemon_emu.fragments
 
+import dev.lemon.lemon_emu.BuildConfig
 import dev.lemon.lemon_emu.ui.modern.PerformanceInfo
 import dev.lemon.lemon_emu.overlay.model.OverlayControlData
 import dev.lemon.lemon_emu.utils.PerGameOverlay
@@ -2369,6 +2370,9 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
                             NativeConfig.isPerGameConfigLoaded()
                         )
                     ) {
+                        // [GRID0] Release files carry no version in their names, so the build is
+                        // read here, next to the firmware it runs.
+                        appendWithPipe("Citrosis ${BuildConfig.VERSION_NAME}")
                         appendWithPipe(fwVersion)
                     }
 

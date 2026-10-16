@@ -15,7 +15,7 @@
     "friends requests and presence",
     "BCAT delivery cache",
     "private-server DNS and CA trust",
-    "exact-build Splatoon 3 toolbox IPS files",
+    "Splatoon 3 IPS files downloaded from GRID0plus-cfw patches releases",
     "eventfd and deferred polling",
     "LAN adapter selection and multicast lock",
     "HDR float sanitization and ARM64 NEON/fused CPU-side copies"
@@ -52,6 +52,17 @@
         }
       ],
       "validation": "Source and IPS structure review only; no builds or device tests"
+    },
+    {
+      "date": "2026-10-16",
+      "repository": "https://github.com/GRID0-net/GRID0-citron",
+      "commits": [
+        "3c93e8e16d9f7a304eeed42d3b068295a9fc83ee",
+        "a6666d6714",
+        "92967d713e"
+      ],
+      "description": "NasUserBaseForApplication birthday in the C buffer; Splatoon 3 patches downloaded at launch from the newest patches-<serial> release instead of embedded; app version shown next to the firmware version",
+      "validation": "Source review only; first build is the release workflow"
     }
   ],
   "repository": "https://github.com/GRID0-net/GRID0-citron",
