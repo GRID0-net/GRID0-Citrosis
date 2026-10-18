@@ -19,6 +19,7 @@
 #include "common/cityhash.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
+#include "common/memory_budget.h"
 #include "common/thread_worker.h"
 #include "core/core.h"
 #include "shader_recompiler/backend/spirv/emit_spirv.h"
@@ -979,6 +980,10 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline() {
     main_pools.ReleaseContents();
     auto pipeline{
         CreateGraphicsPipeline(main_pools, graphics_key, environments.Span(), nullptr, true)};
+    if (Common::MemoryBudget::GetLimits()) {
+        // The pipeline owns copies of shader info; no IR pointers escape translation.
+        main_pools.ReleaseBudgetedContents();
+    }
     if (!pipeline || pipeline_cache_filename.empty()) {
         return pipeline;
     }
@@ -1005,6 +1010,9 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
 
     main_pools.ReleaseContents();
     auto pipeline{CreateComputePipeline(main_pools, key, env, nullptr, true)};
+    if (Common::MemoryBudget::GetLimits()) {
+        main_pools.ReleaseBudgetedContents();
+    }
     if (!pipeline || pipeline_cache_filename.empty()) {
         return pipeline;
     }

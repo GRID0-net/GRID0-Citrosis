@@ -127,19 +127,28 @@ void TextureCache<P>::RunGarbageCollector() {
     bool aggressive_mode = false;
     u64 ticks_to_destroy = 0;
     size_t num_iterations = 0;
+    const bool budgeted = Common::MemoryBudget::GetLimits().has_value();
+    const auto pressure = Common::MemoryBudget::GetPressure();
+    // Readbacks each submit and wait for the GPU. Bound them while still scanning past dirty
+    // targets to reclaim cheap, clean textures in the same pass.
+    size_t downloads_left = budgeted ? 1 : 40;
     const auto Configure = [&](bool allow_aggressive) {
         high_priority_mode = total_used_memory >= expected_memory;
         aggressive_mode = allow_aggressive && total_used_memory >= critical_memory;
-        const bool emergency = Common::MemoryBudget::GetAvailableMemory() != 0 &&
-                               Common::MemoryBudget::GetAvailableMemory() < 512_MiB;
-        ticks_to_destroy = Common::MemoryBudget::GetLimits() && !emergency
-                               ? (aggressive_mode ? 60ULL : 120ULL)
+        ticks_to_destroy = budgeted
+                               ? (pressure == Common::MemoryBudget::Pressure::Critical ? 6ULL
+                                  : pressure == Common::MemoryBudget::Pressure::Moderate ? 20ULL
+                                  : aggressive_mode ? 30ULL : 90ULL)
                                : (aggressive_mode      ? 10ULL
                                   : high_priority_mode ? 25ULL
                                                        : 50ULL);
         num_iterations = aggressive_mode ? 40 : (high_priority_mode ? 20 : 10);
+        if (budgeted && pressure != Common::MemoryBudget::Pressure::None) {
+            num_iterations = aggressive_mode ? 128 : 64;
+        }
     };
-    const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode](ImageId image_id) {
+    const auto Cleanup = [this, &num_iterations, &high_priority_mode, &aggressive_mode,
+                          &downloads_left, budgeted, pressure](ImageId image_id) {
         if (num_iterations == 0) {
             return true;
         }
@@ -148,9 +157,7 @@ void TextureCache<P>::RunGarbageCollector() {
         if (True(image.flags & ImageFlagBits::IsDecoding)) {
             return false;
         }
-        const bool emergency = Common::MemoryBudget::GetAvailableMemory() != 0 &&
-                               Common::MemoryBudget::GetAvailableMemory() < 512_MiB;
-        if (Common::MemoryBudget::GetLimits() && !emergency &&
+        if (budgeted && pressure != Common::MemoryBudget::Pressure::Critical &&
             total_used_memory < critical_memory * 2 &&
             True(image.flags & ImageFlagBits::GpuModified))
             return false;
@@ -167,6 +174,10 @@ void TextureCache<P>::RunGarbageCollector() {
             return false;
         }
         if (must_download) {
+            if (downloads_left == 0) {
+                return false;
+            }
+            --downloads_left;
             auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
             const auto copies = FixSmallVectorADL(FullDownloadCopies(image.info));
             image.DownloadMemory(map, copies);

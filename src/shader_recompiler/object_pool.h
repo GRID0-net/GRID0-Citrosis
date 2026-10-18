@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace Shader {
 
@@ -20,17 +23,38 @@ public:
     template <typename... Args>
         requires std::is_constructible_v<T, Args...>
     [[nodiscard]] T* Create(Args&&... args) {
-        return std::construct_at(Memory(), std::forward<Args>(args)...);
+        Chunk* const chunk{FreeChunk()};
+        T* const object = std::construct_at(&chunk->storage[chunk->used_objects].object,
+                                          std::forward<Args>(args)...);
+        // A throwing constructor must not leave an unconstructed object to be destroyed.
+        ++chunk->used_objects;
+        return object;
     }
 
-    void ReleaseContents() {
+    [[nodiscard]] size_t CapacityBytes() const {
+        size_t bytes = 0;
+        for (const auto& chunk : chunks) {
+            bytes += chunk.num_objects * sizeof(Storage);
+        }
+        return bytes;
+    }
+
+    void ReleaseContents(size_t max_retained_bytes = std::numeric_limits<size_t>::max()) {
         if (chunks.empty()) {
             return;
         }
         Chunk& root{chunks.front()};
+        const size_t total_objects{root.num_objects + new_chunk_size * (chunks.size() - 1)};
+        if (total_objects > max_retained_bytes / sizeof(Storage)) {
+            // A pathological shader must not determine the pool's footprint for the session.
+            // Keep the normal initial chunk so small translations still reuse their storage.
+            chunks.clear();
+            chunks.emplace_back(new_chunk_size);
+            node = &chunks.front();
+            return;
+        }
         if (root.used_objects == root.num_objects) {
             // Root chunk has been filled, squash allocations into it
-            const size_t total_objects{root.num_objects + new_chunk_size * (chunks.size() - 1)};
             chunks.clear();
             chunks.emplace_back(total_objects);
         } else {
@@ -76,7 +100,11 @@ private:
         }
 
         void Release() {
-            std::destroy_n(storage.get(), used_objects);
+            // Storage is a union with an empty destructor. Destroy its active member, otherwise
+            // IR block vectors and other allocations owned by T leak on every pool reset.
+            for (size_t index = 0; index < used_objects; ++index) {
+                std::destroy_at(&storage[index].object);
+            }
             used_objects = 0;
         }
 
@@ -84,11 +112,6 @@ private:
         size_t num_objects{};
         std::unique_ptr<Storage[]> storage;
     };
-
-    [[nodiscard]] T* Memory() {
-        Chunk* const chunk{FreeChunk()};
-        return &chunk->storage[chunk->used_objects++].object;
-    }
 
     [[nodiscard]] Chunk* FreeChunk() {
         if (node->used_objects != node->num_objects) {

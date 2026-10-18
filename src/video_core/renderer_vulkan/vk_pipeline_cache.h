@@ -99,6 +99,13 @@ struct ShaderPools {
         inst.ReleaseContents();
     }
 
+    void ReleaseBudgetedContents() {
+        constexpr size_t retained_bytes = 8 * 1024 * 1024;
+        flow_block.ReleaseContents(retained_bytes);
+        block.ReleaseContents(retained_bytes);
+        inst.ReleaseContents(retained_bytes);
+    }
+
     Shader::ObjectPool<Shader::IR::Inst> inst{8192};
     Shader::ObjectPool<Shader::IR::Block> block{32};
     Shader::ObjectPool<Shader::Maxwell::Flow::Block> flow_block{32};

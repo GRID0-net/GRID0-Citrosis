@@ -136,10 +136,10 @@ void ReportProcessMemory() {
 void MonitorLoop(u64 total) {
     Common::SetCurrentThreadName("MemoryMonitor");
 
-    // A later run reached 635 MiB available then died at 4817 MiB RSS. Keep a larger
-    // reserve for loading bursts rather than interpreting 640 MiB as a safe floor.
-    const u64 moderate = std::max<u64>(1536_MiB, total / 6);
-    const u64 critical = std::max<u64>(1_GiB, total / 8);
+    // Loading the plaza consumed nearly 2 GiB in eight seconds on the 7233 MiB device.
+    // Start reclaiming while there is still room for guest faults and driver allocations.
+    const u64 moderate = std::max<u64>(2_GiB, total / 4);
+    const u64 critical = std::max<u64>(1536_MiB, total / 6);
     // Leave a level only when comfortably above its threshold, so the caches do not flap.
     const auto above = [](u64 available, u64 threshold) {
         return available > threshold + threshold / 4;
@@ -183,7 +183,7 @@ void MonitorLoop(u64 total) {
         }
         const auto now = Clock::now();
         const bool performance = Settings::values.android_vulkan_performance.GetValue();
-        const bool purge_needed = performance ? next == Pressure::Critical && available < 512_MiB
+        const bool purge_needed = performance ? next == Pressure::Critical
                                               : next != Pressure::None;
         if (Common::MemoryBudget::GetPhysicalMemory() != 0 && purge_needed && now >= next_purge) {
             // Release free allocator pages left behind by loader/shader/scratch work.
@@ -195,7 +195,7 @@ void MonitorLoop(u64 total) {
             const int purged = mallopt(option, 0);
             LOG_WARNING(Frontend, "Native heap purge: accepted {}, RSS {} -> {} MiB", purged,
                         before / 1_MiB, ReadOwnRss() / 1_MiB);
-            next_purge = now + std::chrono::seconds(performance ? 10 : 2);
+            next_purge = now + std::chrono::seconds(2);
         }
         if (now >= next_report) {
             next_report = now + std::chrono::seconds(current == Pressure::None ? 5 : 1);

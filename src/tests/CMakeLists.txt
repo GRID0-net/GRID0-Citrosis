@@ -29,6 +29,11 @@ target_link_libraries(tests PRIVATE ${PLATFORM_LIBRARIES} Catch2::Catch2WithMain
 
 add_test(NAME tests COMMAND tests)
 
+add_executable(memory_regressions memory_regressions.cpp ../common/memory_budget.cpp)
+target_include_directories(memory_regressions PRIVATE ..)
+target_compile_features(memory_regressions PRIVATE cxx_std_20)
+add_test(NAME memory_regressions COMMAND memory_regressions)
+
 # needed for vma
 if (NOT MSVC)
     target_compile_options(tests PRIVATE

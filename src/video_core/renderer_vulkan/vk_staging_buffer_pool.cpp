@@ -128,31 +128,58 @@ void StagingBufferPool::TickFrame() {
     current_delete_level = (current_delete_level + 1) % NUM_LEVELS;
 
     if (const auto limits = Common::MemoryBudget::GetLimits()) {
-        size_t resident = stream_buffer_size;
-        for (const auto* cache : {&upload_cache, &download_cache}) {
-            for (const auto& level : *cache) {
-                for (const auto& entry : level.entries)
-                    resident += entry.mapped_span.size_bytes();
-            }
-        }
-        const auto available = Common::MemoryBudget::GetAvailableMemory();
-        const bool emergency = available != 0 && available < 512_MiB;
-        const size_t warm_limit =
-            emergency ? limits->staging_expected : std::max<u64>(limits->staging_expected, 192_MiB);
-        // This is a frame boundary: all draws using this frame's uniforms/indices have
-        // already been recorded. Mid-draw submissions would need extra lifetime tracking.
-        if (resident > 256_MiB || (emergency && resident > warm_limit))
-            scheduler.Finish();
-        if (resident > warm_limit) {
+        const auto reclaim = [this] {
             for (size_t level = 0; level < NUM_LEVELS; ++level) {
-                ReleaseLevel(upload_cache, level);
-                ReleaseLevel(download_cache, level);
+                ReleaseLevel(device_local_cache, level, true);
+                ReleaseLevel(upload_cache, level, true);
+                ReleaseLevel(download_cache, level, true);
+            }
+        };
+        if (ResidentBytes() > limits->staging_expected) {
+            // First release completed allocations without serializing CPU and GPU.
+            reclaim();
+            const bool critical = Common::MemoryBudget::GetPressure() ==
+                                  Common::MemoryBudget::Pressure::Critical;
+            const u64 hard_limit = critical ? limits->staging_expected
+                                            : limits->staging_expected * 2;
+            if (ResidentBytes() > hard_limit && HasNonDeferredBuffers()) {
+                // Only a frame boundary is safe: draws using these allocations are recorded.
+                // Deferred downloads remain owned by their consumers even after Finish().
+                scheduler.Finish();
+                reclaim();
             }
         }
     }
     ReleaseCache(MemoryUsage::DeviceLocal);
     ReleaseCache(MemoryUsage::Upload);
     ReleaseCache(MemoryUsage::Download);
+}
+
+size_t StagingBufferPool::ResidentBytes() const {
+    size_t resident = stream_buffer_size;
+    for (const auto* cache : {&device_local_cache, &upload_cache, &download_cache}) {
+        for (size_t level = 0; level < NUM_LEVELS; ++level) {
+            // Device-local staging is not mapped, but consumes the same shared RAM on phones.
+            if (!(*cache)[level].entries.empty()) {
+                resident += (*cache)[level].entries.size() * (size_t{1} << level);
+            }
+        }
+    }
+    return resident;
+}
+
+bool StagingBufferPool::HasNonDeferredBuffers() const {
+    // After reclaiming completed buffers, only these entries can benefit from a GPU wait.
+    // Waiting cannot release consumer-owned deferred downloads.
+    for (const auto* cache : {&device_local_cache, &upload_cache, &download_cache}) {
+        for (const auto& level : *cache) {
+            if (std::any_of(level.entries.begin(), level.entries.end(),
+                            [](const StagingBuffer& entry) { return !entry.deferred; })) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 StagingBufferRef StagingBufferPool::GetStreamBuffer(size_t size) {
@@ -291,7 +318,7 @@ void StagingBufferPool::ReleaseCache(MemoryUsage usage) {
     ReleaseLevel(GetCache(usage), current_delete_level);
 }
 
-void StagingBufferPool::ReleaseLevel(StagingBuffersCache& cache, size_t log2) {
+void StagingBufferPool::ReleaseLevel(StagingBuffersCache& cache, size_t log2, bool all) {
     constexpr size_t deletions_per_tick = 16;
     auto& staging = cache[log2];
     auto& entries = staging.entries;
@@ -300,8 +327,8 @@ void StagingBufferPool::ReleaseLevel(StagingBuffersCache& cache, size_t log2) {
     const auto is_deletable = [this](const StagingBuffer& entry) {
         return !entry.deferred && scheduler.IsFree(entry.tick);
     };
-    const size_t begin_offset = staging.delete_index;
-    const size_t end_offset = (std::min)(begin_offset + deletions_per_tick, old_size);
+    const size_t begin_offset = all ? 0 : staging.delete_index;
+    const size_t end_offset = all ? old_size : (std::min)(begin_offset + deletions_per_tick, old_size);
     const auto begin = entries.begin() + begin_offset;
     const auto end = entries.begin() + end_offset;
     entries.erase(std::remove_if(begin, end, is_deletable), end);

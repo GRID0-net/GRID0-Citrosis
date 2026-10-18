@@ -99,7 +99,10 @@ private:
 
     void ReleaseCache(MemoryUsage usage);
 
-    void ReleaseLevel(StagingBuffersCache& cache, size_t log2);
+    void ReleaseLevel(StagingBuffersCache& cache, size_t log2, bool all = false);
+
+    size_t ResidentBytes() const;
+    bool HasNonDeferredBuffers() const;
     size_t Region(size_t iter) const noexcept {
         return iter / region_size;
     }

@@ -63,14 +63,25 @@ void BufferCache<P>::RunGarbageCollector() {
     }
 
     const bool aggressive_gc = total_used_memory >= critical_memory;
-    const u64 ticks_to_destroy = aggressive_gc ? 60 : 120;
-    int num_iterations = aggressive_gc ? 64 : 32;
-    const auto clean_up = [this, &num_iterations](BufferId buffer_id) {
+    const bool budgeted = Common::MemoryBudget::GetLimits().has_value();
+    const auto pressure = Common::MemoryBudget::GetPressure();
+    const bool critical = budgeted && pressure == Common::MemoryBudget::Pressure::Critical;
+    const bool moderate = budgeted && pressure == Common::MemoryBudget::Pressure::Moderate;
+    const u64 ticks_to_destroy = critical ? 6 : moderate ? 20 : aggressive_gc ? 60 : 120;
+    int num_iterations = critical ? 128 : aggressive_gc ? 64 : 32;
+    int downloads_left = budgeted ? 1 : num_iterations;
+    const auto clean_up = [this, &num_iterations, &downloads_left](BufferId buffer_id) {
         if (num_iterations == 0) {
             return true;
         }
         --num_iterations;
         auto& buffer = slot_buffers[buffer_id];
+        if (IsRegionGpuModified(buffer.CpuAddr(), buffer.SizeBytes())) {
+            if (downloads_left == 0) {
+                return false;
+            }
+            --downloads_left;
+        }
         DownloadBufferMemory(buffer);
         DeleteBuffer(buffer_id);
         return false;
