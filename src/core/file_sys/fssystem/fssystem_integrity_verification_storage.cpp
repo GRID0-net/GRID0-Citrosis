@@ -7,7 +7,9 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include "common/alignment.h"
+#include <algorithm>
+#include <cstring>
+#include <limits>
 #include "core/file_sys/fssystem/fssystem_integrity_verification_storage.h"
 
 namespace FileSys {
@@ -62,32 +64,31 @@ size_t IntegrityVerificationStorage::Read(u8* buffer, size_t size, size_t offset
     // Validate arguments.
     ASSERT(buffer != nullptr);
 
-    // Validate the offset.
-    s64 data_size = m_data_storage->GetSize();
-    ASSERT(offset <= static_cast<size_t>(data_size));
-
-    // Validate the access range.
-    ASSERT(R_SUCCEEDED(IStorage::CheckAccessRange(
-        offset, size, Common::AlignUp(data_size, static_cast<size_t>(m_verification_block_size)))));
-
-    // Determine the read extents.
-    size_t read_size = size;
-    if (static_cast<s64>(offset + read_size) > data_size) {
-        // Determine the padding sizes.
-        s64 padding_offset = data_size - offset;
-        size_t padding_size = static_cast<size_t>(
-            m_verification_block_size - (padding_offset & (m_verification_block_size - 1)));
-        ASSERT(static_cast<s64>(padding_size) < m_verification_block_size);
-
-        // Clear the padding.
-        std::memset(static_cast<u8*>(buffer) + padding_offset, 0, padding_size);
-
-        // Set the new in-bounds size.
-        read_size = static_cast<size_t>(data_size - offset);
+    const size_t data_size = m_data_storage->GetSize();
+    const size_t block_size = static_cast<size_t>(m_verification_block_size);
+    const size_t padding = (block_size - data_size % block_size) % block_size;
+    if (data_size > std::numeric_limits<size_t>::max() - padding) {
+        return 0;
+    }
+    const size_t padded_size = data_size + padding;
+    if (offset > padded_size || size > padded_size - offset) {
+        return 0;
     }
 
-    // Perform the read.
-    return m_data_storage->Read(buffer, read_size, offset);
+    // Only the requested part of the final block belongs to this caller's
+    // buffer. Clearing the entire block tail here overwrites IPC buffers when
+    // a small RomFS/DLC read crosses the end of its data region.
+    const size_t read_size = offset < data_size ? std::min(size, data_size - offset) : 0;
+    if (read_size != 0) {
+        const size_t actual = m_data_storage->Read(buffer, read_size, offset);
+        if (actual != read_size) {
+            return actual;
+        }
+    }
+    if (read_size < size) {
+        std::memset(buffer + read_size, 0, size - read_size);
+    }
+    return size;
 }
 
 size_t IntegrityVerificationStorage::GetSize() const {

@@ -534,6 +534,8 @@ Result FSP_SRV::OpenDataStorageByDataId(OutInterface<IStorage> out_interface,
     auto storage = std::make_shared<IStorage>(
         system, pm.PatchRomFS(base.get(), std::move(data), FileSys::ContentRecordType::Data));
 
+    LOG_INFO(Service_FS, "Opened content storage: title_id={:016X}, storage_id={:02X}",
+             title_id, storage_id);
     *out_interface = std::move(storage);
     R_SUCCEED();
 }

@@ -30,9 +30,21 @@ Result IStorage::Read(
 
     R_UNLESS(length >= 0, FileSys::ResultInvalidSize);
     R_UNLESS(offset >= 0, FileSys::ResultInvalidOffset);
+    if (static_cast<u64>(length) > out_bytes.size()) {
+        LOG_ERROR(Service_FS,
+                  "Storage read exceeds IPC buffer: offset={:#x}, length={:#x}, buffer={:#x}",
+                  offset, length, out_bytes.size());
+        R_RETURN(FileSys::ResultInvalidSize);
+    }
 
     // Read the data from the Storage backend
-    backend->Read(out_bytes.data(), length, offset);
+    const auto actual = backend->Read(out_bytes.data(), static_cast<size_t>(length), offset);
+    if (actual != static_cast<size_t>(length)) {
+        LOG_ERROR(Service_FS,
+                  "Short content storage read: name='{}', size={:#x}, offset={:#x}, "
+                  "requested={:#x}, actual={:#x}",
+                  backend->GetName(), backend->GetSize(), offset, length, actual);
+    }
 
     R_SUCCEED();
 }
