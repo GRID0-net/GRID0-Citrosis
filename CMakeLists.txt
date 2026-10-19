@@ -4,6 +4,7 @@
 
 cmake_minimum_required(VERSION 3.31)
 
+set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "macOS deployment target")
 project(yuzu)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
@@ -28,20 +29,199 @@ if (NOT DEFINED ARCHITECTURE)
     message(FATAL_ERROR "Architecture didn't make it out of scope, did you delete DetectArchitecture.cmake?")
 endif()
 
-option(ENABLE_UPDATE_CHECKER "Enable update checker (Android)" OFF)
+# Needed for FFmpeg w/ VAAPI and DRM
+if (OPENBSD)
+    # OpenBSD 7.8 broke libcxx when upgrading, so we must define the PSTL backend manually
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${CMAKE_SYSROOT}/usr/X11R6/include -D_LIBCPP_PSTL_BACKEND_SERIAL=1")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${CMAKE_SYSROOT}/usr/X11R6/include -D_LIBCPP_PSTL_BACKEND_SERIAL=1")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${CMAKE_SYSROOT}/usr/X11R6/lib")
+elseif (NETBSD)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${CMAKE_SYSROOT}/usr/X11R7/include -I${CMAKE_SYSROOT}/usr/pkg/include/c++/v1")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${CMAKE_SYSROOT}/usr/X11R7/include -I${CMAKE_SYSROOT}/usr/pkg/include/c++/v1")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${CMAKE_SYSROOT}/usr/X11R7/lib")
+endif()
 
+# NetBSD: Fun for the whole family!
+if (NETBSD)
+    set(ENV{PKG_CONFIG_PATH} "${PKG_CONFIG_PATH}:${CMAKE_SYSROOT}/usr/pkg/lib/ffmpeg7/pkgconfig")
+endif()
+
+cmake_dependent_option(YUZU_STATIC_ROOM "Build a static room executable only (CI only)" OFF "LINUX" OFF)
+if (YUZU_STATIC_ROOM)
+    set(YUZU_ROOM ON)
+    set(YUZU_ROOM_STANDALONE ON)
+
+    # disable e v e r y t h i n g
+    set(ENABLE_QT OFF)
+    set(YUZU_CMD OFF)
+    set(ENABLE_CUBEB OFF)
+    set(ENABLE_UPDATE_CHECKER OFF)
+    set(USE_DISCORD_PRESENCE OFF)
+    set(BUILD_TESTING OFF)
+    set(ENABLE_WEB_SERVICE OFF)
+    set(ENABLE_LIBUSB OFF)
+
+    # allow static libs for boost though
+    set(Boost_USE_STATIC_LIBS ON)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+    set(OPENSSL_USE_STATIC_LIBS ON)
+    set(OpenSSL_FORCE_SYSTEM ON)
+
+    set(zstd_FORCE_BUNDLED ON)
+    set(fmt_FORCE_BUNDLED ON)
+endif()
+
+# qt stuff
+cmake_dependent_option(ENABLE_QT "Enable the Qt frontend" ON "NOT ANDROID" OFF)
+option(ENABLE_QT_TRANSLATION "Enable translations for the Qt frontend" OFF)
+option(ENABLE_UPDATE_CHECKER "Enable update checker (for Qt and Android)" OFF)
+cmake_dependent_option(YUZU_USE_QT_MULTIMEDIA "Use QtMultimedia for Camera"  OFF "NOT YUZU_USE_BUNDLED_QT" OFF)
+cmake_dependent_option(YUZU_USE_QT_WEB_ENGINE "Use QtWebEngine for web applet implementation" OFF "NOT YUZU_USE_BUNDLED_QT" OFF)
+set(YUZU_QT_MIRROR "" CACHE STRING "What mirror to use for downloading the bundled Qt libraries")
+cmake_dependent_option(YUZU_USE_BUNDLED_QT "Download bundled Qt binaries" "${MSVC}" "ENABLE_QT" OFF)
+
+option(ENABLE_DEBUG_TOOLS "Enable debugging tools (maxwell disassembler, SPIRV translator, etc)" OFF)
 option(ENABLE_WERROR "Enable -Werror diagnostics" ON)
 
-# Lossless Scaling frame generation. Only Android.
-cmake_dependent_option(ENABLE_LSFG "Enable Lossless Scaling frame generation" ON "ANDROID" OFF)
+# Both Citrosis FG and the optional user-supplied Lossless Scaling shaders use Vulkan.
+cmake_dependent_option(ENABLE_LSFG "Enable Vulkan frame generation" ON "ANDROID OR WIN32 OR LINUX" OFF)
 
 option(ENABLE_RESHADE "Enable ReShade FX post-processing effects" ON)
+
+# non-linux bundled qt are static
+if (YUZU_USE_BUNDLED_QT AND (APPLE OR NOT UNIX))
+    set(YUZU_STATIC_BUILD ON)
+endif()
+
+# TODO: does mingw need any of this anymore
+# static stuff
+option(YUZU_STATIC_BUILD "Use static libraries and executables if available" OFF)
+
+# TODO: StaticBuild.cmake
+if (YUZU_STATIC_BUILD)
+    # lol
+    set(Boost_USE_STATIC_LIBS ON)
+    set(BUILD_SHARED_LIBS OFF)
+
+    ## find .a libs first (static, usually)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+
+    ## some libraries use CMAKE_IMPORT_LIBRARY_SUFFIX e.g. Harfbuzz ##
+    set(CMAKE_IMPORT_LIBRARY_SUFFIX ".a")
+
+    if (MINGW)
+        # simple hook to reject dynamic libs
+        function(find_library var)
+            # also skip previously-found libraries cuz... yaknow
+            # UNLESS they are dll.a :{
+            if (${var} AND NOT ${var} MATCHES "dll\\.a$")
+                return()
+            endif()
+
+            _find_library(${var} ${ARGN})
+            if (${var})
+                get_filename_component(lib_name "${${var}}" NAME)
+                if (lib_name MATCHES "dll\\.a$")
+                    unset(${var} CACHE)
+                    set(${var} "${var}-NOTFOUND" CACHE INTERNAL "" FORCE)
+                endif()
+            endif()
+        endfunction()
+
+        # msys2 quazip does not build a static lib
+        set(QuaZip-Qt6_FORCE_BUNDLED ON)
+
+        set(YUZU_USE_BUNDLED_FFMPEG ON)
+        set(YUZU_USE_BUNDLED_SDL3 ON)
+        set(YUZU_USE_BUNDLED_OPENSSL ON)
+
+        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF)
+    elseif(APPLE)
+        set(YUZU_USE_BUNDLED_FFMPEG ON)
+        set(YUZU_USE_BUNDLED_SDL3 ON)
+        set(YUZU_USE_BUNDLED_OPENSSL ON)
+
+        # these libs do not properly provide static libs/let you do it with cmake
+        set(fmt_FORCE_BUNDLED ON)
+        set(SPIRV-Headers_FORCE_BUNDLED ON)
+        set(zstd_FORCE_BUNDLED ON)
+    endif()
+endif()
+
+if (MSVC AND ARCHITECTURE_x86)
+    message(FATAL_ERROR "Attempting to build with the x86 environment is not supported. \
+        This can typically happen if you used the Developer Command Prompt from the start menu; \
+        instead, run vcvars64.bat directly, located at C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat")
+endif()
+
+if (CXX_CLANG_CL)
+    # clang-cl prints literally 10000+ warnings without this
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-command-line-argument>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unsafe-buffer-usage>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-value>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-extra-semi-stmt>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-sign-conversion>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-reserved-identifier>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-deprecated-declarations>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-cast-function-type-mismatch>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c99-extensions>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++17-compat>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++11-compat-reserved-user-defined-literal>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++11-compat-deprecated-writable-strings>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++11-compat-pedantic>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++11-compat>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++0x-compat>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++98-c++11-compat-binary-literal>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++98-compat-pedantic>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c++98-compat>
+        $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-c99-compat>
+        $<$<COMPILE_LANGUAGE:C,CXX>:/EHsc>)
+    # REQUIRED CPU features IN Windows-amd64
+    if (ARCHITECTURE_x86_64)
+        add_compile_options(
+            $<$<COMPILE_LANGUAGE:C,CXX>:-msse4.1>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-mcx16>
+        )
+    endif()
+endif()
+
+# Disable Warnings as Errors for MSVC
+if (MSVC AND NOT CXX_CLANG)
+    # This was dripping into spirv, being overriden, and causing cl flag override warning
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /WX-")
+    set(CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} /W3 /WX-")
+endif()
+
+# Set runtime library to MD/MDd for all configurations
+if(MSVC)
+    if (YUZU_USE_BUNDLED_QT AND ARCHITECTURE_arm64)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        set(libflag MT)
+    else()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+        set(libflag MD)
+    endif()
+
+    # Force all projects (including external dependencies) to use the same runtime
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /${libflag}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /${libflag}d")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /${libflag}")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /${libflag}d")
+
+    # Add this to ensure Cubeb uses the same runtime
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Debug>:/${libflag}d>>
+        $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/${libflag}>>
+        $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/${libflag}>>
+        $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:MinSizeRel>:/${libflag}>>)
+endif()
 
 # TODO(crueter): Cleanup, each dep that has a bundled option should allow to choose between bundled, external, system
 option(ENABLE_CUBEB "Enables the cubeb audio backend" ON)
 
 set(EXT_DEFAULT OFF)
-if (ANDROID)
+if (MSVC OR ANDROID)
     set(EXT_DEFAULT ON)
 endif()
 
@@ -49,42 +229,58 @@ option(YUZU_USE_BUNDLED_SDL3 "Download bundled SDL3 build" ${EXT_DEFAULT})
 
 # ffmpeg
 option(YUZU_USE_BUNDLED_FFMPEG "Download bundled FFmpeg" ${EXT_DEFAULT})
-cmake_dependent_option(YUZU_USE_EXTERNAL_FFMPEG "Build FFmpeg from external source" OFF "NOT ANDROID" OFF)
+cmake_dependent_option(YUZU_USE_EXTERNAL_FFMPEG "Build FFmpeg from external source" "${SOLARIS}" "NOT WIN32 AND NOT ANDROID" OFF)
 
 # sirit
 set(BUNDLED_SIRIT_DEFAULT OFF)
-if (ANDROID)
+if (MSVC AND NOT (CMAKE_BUILD_TYPE MATCHES "Deb") OR ANDROID)
     set(BUNDLED_SIRIT_DEFAULT ON)
 endif()
 
 option(YUZU_USE_BUNDLED_SIRIT "Download bundled sirit" ${BUNDLED_SIRIT_DEFAULT})
 
-cmake_dependent_option(ENABLE_LIBUSB "Enable the use of LibUSB" OFF "0" OFF)
+# FreeBSD 15+ has libusb, versions below should disable it
+cmake_dependent_option(ENABLE_LIBUSB "Enable the use of LibUSB" ON "WIN32 OR LINUX OR FREEBSD OR APPLE" OFF)
 
-cmake_dependent_option(ENABLE_OPENGL "Enable OpenGL" OFF "0" OFF)
+cmake_dependent_option(ENABLE_OPENGL "Enable OpenGL" ON "NOT (WIN32 AND ARCHITECTURE_arm64) AND NOT APPLE AND NOT ANDROID" OFF)
 mark_as_advanced(FORCE ENABLE_OPENGL)
 
 option(ENABLE_WEB_SERVICE "Enable web services (telemetry, etc.)" ON)
 option(ENABLE_WIFI_SCAN "Enable WiFi scanning" OFF)
 
+cmake_dependent_option(USE_DISCORD_PRESENCE "Enables Discord Rich Presence" OFF "ENABLE_QT" OFF)
+
 option(YUZU_TESTS "Compile tests" "${BUILD_TESTING}")
+
+# Install udev rules on Linux (mainly for gyros)
+# Only acts on joysticks and nothing else.
+cmake_dependent_option(YUZU_INSTALL_UDEV_RULES "Install udev rules for gyro access" OFF "LINUX" OFF)
 
 option(YUZU_DOWNLOAD_ANDROID_VVL "Download validation layer binary for android" ON)
 
 option(YUZU_LEGACY "Apply patches that improve compatibility with older GPUs (e.g. Snapdragon 865) at the cost of performance" OFF)
 
-option(LEMON_LITE "Lemon Lite: lighter default settings for weaker GPUs (android only)" OFF)
-option(LEMON_SPOOFED "Lemon Lite & Spoofed: installed under another app's package name (android only)" OFF)
+option(LEMON_LITE "Lemon Lite defaults (Android only)" OFF)
+option(LEMON_SPOOFED "Lemon spoofed package (Android only)" OFF)
 
 option(NIGHTLY_BUILD "Use Nightly qualifiers in the update checker and build metadata" OFF)
+
+cmake_dependent_option(YUZU_ROOM "Enable dedicated room functionality" ON "NOT ANDROID" OFF)
+cmake_dependent_option(YUZU_ROOM_STANDALONE "Enable standalone room executable" ON "YUZU_ROOM" OFF)
+
+cmake_dependent_option(YUZU_CMD "Compile the eden-cli executable" ON "NOT ANDROID" OFF)
+
+cmake_dependent_option(YUZU_CRASH_DUMPS "Compile crash dump (Minidump) support" OFF "WIN32 OR LINUX" OFF)
 
 option(YUZU_DOWNLOAD_TIME_ZONE_DATA "Always download time zone binaries" ON)
 set(YUZU_TZDB_PATH "" CACHE STRING "Path to a pre-downloaded timezone database")
 
+cmake_dependent_option(YUZU_USE_BUNDLED_MOLTENVK "Download bundled MoltenVK lib" ON "APPLE" OFF)
+
 option(YUZU_DISABLE_LLVM "Disable LLVM (useful for CI)" OFF)
 
 set(DEFAULT_YUZU_USE_BUNDLED_OPENSSL OFF)
-if (EXT_DEFAULT)
+if (EXT_DEFAULT OR SOLARIS OR OPENBSD)
     set(DEFAULT_YUZU_USE_BUNDLED_OPENSSL ON)
 endif()
 
@@ -107,15 +303,24 @@ if(EXISTS ${PROJECT_SOURCE_DIR}/hooks/pre-commit AND NOT EXISTS ${PROJECT_SOURCE
     endif()
 endif()
 
-if (ARCHITECTURE_arm64)
+if (ARCHITECTURE_arm64 AND (ANDROID OR LINUX))
     set(HAS_NCE 1)
     add_compile_definitions(HAS_NCE=1)
 endif()
 
-# Android's NDK libc++ (Clang) ships std::stop_token/std::jthread as
-# experimental and gates them behind this flag.
-add_compile_options(
-    $<$<COMPILE_LANGUAGE:C,CXX>:-fexperimental-library>)
+if (ANDROID)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fexperimental-library>)
+elseif (UNIX AND NOT (LINUX OR WIN32))
+    if(CXX_APPLE OR CXX_CLANG)
+        # libc++ has stop_token and jthread as experimental
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexperimental-library")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexperimental-library")
+    else()
+        # Uses glibc, mostly?
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_LIBCPP_ENABLE_EXPERIMENTAL=1")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LIBCPP_ENABLE_EXPERIMENTAL=1")
+    endif()
+endif()
 
 # Build/optimization presets
 if (CXX_GCC OR CXX_CLANG)
@@ -174,6 +379,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 # System imported libraries
 # =======================================================================
 
+# Prefer the -pthread flag on Linux.
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
@@ -215,6 +421,11 @@ set(BOOST_NO_HEADERS ${Boost_ADDED})
 if (Boost_ADDED)
     add_compile_definitions(YUZU_BOOST_v1)
     if (NOT MSVC OR CXX_CLANG)
+        # solaris sucks
+        if (SOLARIS)
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-pthreads>)
+        endif()
+
         target_compile_options(boost_heap INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-shadow>)
         target_compile_options(boost_icl INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-shadow>)
         target_compile_options(boost_asio INTERFACE
@@ -244,18 +455,28 @@ endif()
 # nlohmann
 AddJsonPackage(nlohmann)
 
-# zlib
-AddJsonPackage(zlib)
+if (NOT YUZU_STATIC_ROOM)
+    # zlib
+    AddJsonPackage(zlib)
 
-if (ZLIB_ADDED)
-    add_library(ZLIB::ZLIB ALIAS zlibstatic)
-endif()
+    if (ZLIB_ADDED)
+        add_library(ZLIB::ZLIB ALIAS zlibstatic)
+    endif()
 
-# Opus
-AddJsonPackage(opus)
+    # Opus
+    AddJsonPackage(opus)
 
-if (NOT TARGET Opus::opus)
-    add_library(Opus::opus ALIAS opus)
+    if (Opus_ADDED)
+        if (MSVC AND CXX_CLANG)
+            target_compile_options(opus PRIVATE
+                $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-implicit-function-declaration>
+            )
+        endif()
+    endif()
+
+    if (NOT TARGET Opus::opus)
+        add_library(Opus::opus ALIAS opus)
+    endif()
 endif()
 
 if(NOT TARGET Boost::headers)
@@ -287,6 +508,34 @@ function(create_target_directory_groups target_name)
     endforeach()
 endfunction()
 
+# Platform-specific library requirements
+# Put these BEFORE EXTERNALS or Boost WILL die
+# =============================================
+
+if (APPLE)
+    foreach(fw Carbon Metal Cocoa IOKit CoreVideo CoreMedia Security UniformTypeIdentifiers Foundation)
+        find_library(${fw}_LIBRARY ${fw} REQUIRED)
+        list(APPEND PLATFORM_LIBRARIES ${${fw}_LIBRARY})
+    endforeach()
+elseif (WIN32)
+    # Target Windows 10
+    add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00)
+    set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES} winmm iphlpapi ws2_32 wlanapi)
+    if (MINGW)
+        # PSAPI is the Process Status API
+        set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES} psapi imm32 version crypt32 rpcrt4 gdi32 wldap32 mswsock)
+    endif()
+elseif (MANAGARM)
+    set(PLATFORM_LIBRARIES iconv intl)
+elseif (HAIKUOS)
+    # Haiku is so special :)
+    set(PLATFORM_LIBRARIES bsd /boot/system/lib/libnetwork.so)
+elseif (CMAKE_SYSTEM_NAME MATCHES "^(Linux|kFreeBSD|GNU|SunOS)$")
+    set(PLATFORM_LIBRARIES rt)
+endif()
+
+message(STATUS "Platform Libraries: ${PLATFORM_LIBRARIES}")
+
 add_subdirectory(externals)
 
 # pass targets from externals
@@ -297,30 +546,109 @@ if (ARCHITECTURE_x86 OR ARCHITECTURE_x86_64)
     find_package(xbyak)
 endif()
 
-find_package(VulkanMemoryAllocator)
-find_package(VulkanUtilityLibraries)
-find_package(SimpleIni)
-find_package(sirit)
-find_package(gamemode)
-find_package(frozen)
+if (NOT YUZU_STATIC_ROOM)
+    find_package(libusb)
+    find_package(VulkanMemoryAllocator)
+    find_package(VulkanUtilityLibraries)
+    find_package(SimpleIni)
+    find_package(sirit)
+    find_package(gamemode)
+    find_package(frozen)
 
-if (ENABLE_WEB_SERVICE OR ENABLE_UPDATE_CHECKER)
-    find_package(cpp-jwt)
+    if (ARCHITECTURE_riscv64)
+        find_package(biscuit)
+    endif()
+
+    if (ENABLE_WEB_SERVICE OR ENABLE_UPDATE_CHECKER)
+        find_package(cpp-jwt)
+    endif()
+
+    if (ARCHITECTURE_arm64 OR DYNARMIC_TESTS)
+        find_package(oaknut)
+    endif()
+
+    if (NOT ANDROID)
+        find_package(SDL3)
+    endif()
+
+    if (USE_DISCORD_PRESENCE)
+        find_package(DiscordRPC)
+    endif()
+
+    if (ENABLE_CUBEB)
+        find_package(cubeb)
+    endif()
+
+    if (YUZU_TESTS OR DYNARMIC_TESTS)
+        find_package(Catch2)
+    endif()
 endif()
 
-if (ARCHITECTURE_arm64 OR DYNARMIC_TESTS)
-    find_package(oaknut)
+# Qt stuff
+if (ENABLE_QT)
+    if (WIN32 AND NOT CMAKE_CROSSCOMPILING AND NOT YUZU_USE_BUNDLED_QT)
+        find_program(WINDEPLOYQT_EXECUTABLE NAMES windeployqt6 windeployqt REQUIRED)
+    endif()
+    if (YUZU_USE_BUNDLED_QT)
+        AddQt(Eden-CI/Qt 6.11.1)
+    else()
+        message(STATUS "Using system Qt")
+        if (NOT Qt6_DIR)
+            set(Qt6_DIR "" CACHE PATH "Additional path to search for Qt6 libraries like C:/Qt/6.8.3/msvc2022_64/lib/cmake/Qt6")
+        endif()
+        list(APPEND CMAKE_PREFIX_PATH "${Qt6_DIR}")
+    endif()
+
+    find_package(Qt6 REQUIRED COMPONENTS Core)
+
+    if (NOT DEFINED QT_TARGET_PATH)
+        get_target_property(qtcore_path Qt6::Core LOCATION_Release)
+        # Fedora uses lib64; Debian may have a multiarch directory below lib.
+        string(REGEX REPLACE "/(bin|lib|lib64)/.*$" "" QT_TARGET_PATH "${qtcore_path}")
+    endif()
+
+    if (NOT DEFINED QT_HOST_PATH)
+        set(QT_HOST_PATH "${QT_TARGET_PATH}")
+    endif()
+
+    message(STATUS "Using target Qt at ${QT_TARGET_PATH}")
+    message(STATUS "Using host Qt at ${QT_HOST_PATH}")
+
+    ## Components ##
+
+    # Best practice is to ask for all components at once, so they are from the same version
+    set(YUZU_QT_COMPONENTS Core Widgets Charts Concurrent Gui Network)
+    if (LINUX OR FREEBSD)
+        list(APPEND YUZU_QT_COMPONENTS DBus)
+        # yes Qt, we get it
+        set(QT_NO_PRIVATE_MODULE_WARNING ON)
+        list(APPEND YUZU_QT_OPTIONAL GuiPrivate)
+    endif()
+
+    if (YUZU_USE_QT_MULTIMEDIA)
+        list(APPEND YUZU_QT_COMPONENTS Multimedia)
+    endif()
+
+    if (YUZU_USE_QT_WEB_ENGINE)
+        list(APPEND YUZU_QT_COMPONENTS WebEngineCore WebEngineWidgets)
+    endif()
+
+    if (ENABLE_QT_TRANSLATION)
+        list(APPEND YUZU_QT_COMPONENTS LinguistTools)
+    endif()
+
+    find_package(Qt6 REQUIRED COMPONENTS ${YUZU_QT_COMPONENTS} OPTIONAL_COMPONENTS ${YUZU_QT_OPTIONAL})
+    set(QT_MAJOR_VERSION 6)
+    # Qt6 sets cxx_std_17 and we need to undo that
+    set_target_properties(Qt6::Platform PROPERTIES INTERFACE_COMPILE_FEATURES "")
+
+    ## Qt Externals ##
+
+    # QuaZip
+    AddJsonPackage(quazip)
 endif()
 
-if (ENABLE_CUBEB)
-    find_package(cubeb)
-endif()
-
-if (YUZU_TESTS OR DYNARMIC_TESTS)
-    find_package(Catch2)
-endif()
-
-if (NOT (YUZU_USE_BUNDLED_FFMPEG OR YUZU_USE_EXTERNAL_FFMPEG))
+if (NOT YUZU_STATIC_ROOM AND NOT (YUZU_USE_BUNDLED_FFMPEG OR YUZU_USE_EXTERNAL_FFMPEG))
     # Use system installed FFmpeg
     find_package(FFmpeg REQUIRED QUIET COMPONENTS ${FFmpeg_COMPONENTS})
 
@@ -330,7 +658,92 @@ if (NOT (YUZU_USE_BUNDLED_FFMPEG OR YUZU_USE_EXTERNAL_FFMPEG))
     set_property(GLOBAL APPEND PROPERTY CPM_PACKAGE_URLS "https://github.com/FFmpeg/FFmpeg")
 endif()
 
+if (WIN32 AND YUZU_CRASH_DUMPS)
+    message(STATUS "YUZU_CRASH_DUMPS is unimplemented on Windows. Check back later.")
+    # set(BREAKPAD_VER "breakpad-c89f9dd")
+    # download_bundled_external("breakpad/" ${BREAKPAD_VER} "breakpad-win" BREAKPAD_PREFIX "c89f9dd")
+
+    # set(BREAKPAD_CLIENT_INCLUDE_DIR "${BREAKPAD_PREFIX}/include")
+    # set(BREAKPAD_CLIENT_LIBRARY "${BREAKPAD_PREFIX}/lib/libbreakpad_client.lib")
+
+    # add_library(libbreakpad_client INTERFACE IMPORTED)
+    # target_link_libraries(libbreakpad_client INTERFACE "${BREAKPAD_CLIENT_LIBRARY}")
+    # target_include_directories(libbreakpad_client INTERFACE "${BREAKPAD_CLIENT_INCLUDE_DIR}")
+endif()
+
 # Include source code
 # ===================
 
+# Adjustments for MSVC + Ninja
+if (MSVC AND CMAKE_GENERATOR STREQUAL "Ninja")
+    add_compile_options(
+        /wd4464 # relative include path contains '..'
+        /wd4711 # function 'function' selected for automatic inline expansion
+        /wd4820 # 'bytes' bytes padding added after construct 'member_name'
+    )
+endif()
+
+# Adjustments for clang-cl
+if (MSVC AND CXX_CLANG)
+    if (ARCHITECTURE_x86_64)
+        set(FILE_ARCH x86_64)
+    elseif (ARCHITECTURE_arm64)
+        set(FILE_ARCH aarch64)
+    else()
+        message(FATAL_ERROR "clang-cl: Unsupported architecture ${ARCHITECTURE}")
+    endif()
+
+    AddJsonPackage(llvm-mingw)
+    set(LIB_PATH "${llvm-mingw_SOURCE_DIR}/libclang_rt.builtins-${FILE_ARCH}.a")
+
+    add_library(llvm-mingw-runtime STATIC IMPORTED)
+    set_target_properties(llvm-mingw-runtime PROPERTIES
+        IMPORTED_LOCATION "${LIB_PATH}")
+
+    link_libraries(llvm-mingw-runtime)
+endif()
+
 add_subdirectory(src)
+
+if (ENABLE_DEBUG_TOOLS)
+    add_subdirectory(tools/maxwell-disas)
+    add_subdirectory(tools/maxwell-spirv)
+    add_subdirectory(tools/maxwell-ir)
+endif()
+
+# Set yuzu project or yuzu-cmd project as default StartUp Project in Visual Studio depending on whether QT is enabled or not
+if(ENABLE_QT)
+    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yuzu)
+else()
+    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yuzu-cmd)
+endif()
+
+# Installation instructions
+# =========================
+
+# Install freedesktop.org metadata files, following those specifications:
+# https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html
+# https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html
+# https://specifications.freedesktop.org/shared-mime-info-spec/shared-mime-info-spec-latest.html
+# https://www.freedesktop.org/software/appstream/docs/
+
+# TODO: Icon/install handling n such should be put into dist/CMakeLists.txt
+if(ENABLE_QT AND UNIX AND NOT APPLE)
+    install(FILES "dist/net.grid0.citrosis.desktop"
+        DESTINATION "share/applications")
+    install(FILES "dist/net.grid0.citrosis.svg"
+        DESTINATION "share/icons/hicolor/scalable/apps")
+
+    # TODO: these files need to be updated.
+    install(FILES "dist/net.grid0.citrosis.xml"
+        DESTINATION "share/mime/packages")
+    install(FILES "dist/net.grid0.citrosis.metainfo.xml"
+        DESTINATION "share/metainfo")
+endif()
+
+if (YUZU_INSTALL_UDEV_RULES)
+    include(GNUInstallDirs)
+
+    install(FILES "dist/72-eden-input.rules"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/udev/rules.d")
+endif()

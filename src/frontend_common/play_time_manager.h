@@ -37,6 +37,7 @@ public:
     void SetPlayTime(u64 program_id, u64 play_time);
     void Start();
     void Stop();
+    void Reload(); // Desktop user-data transfer, while emulation is stopped.
 
     static std::string GetReadablePlayTime(u64 time_seconds);
     static std::string GetPlayTimeHours(u64 time_seconds);

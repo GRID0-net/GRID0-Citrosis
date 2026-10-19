@@ -147,6 +147,10 @@ void PlayTimeManager::Save() {
     }
 }
 
+void PlayTimeManager::Reload() {
+    ReadPlayTimeFile(database);
+}
+
 u64 PlayTimeManager::GetPlayTime(u64 program_id) const {
     auto it = database.find(program_id);
     if (it != database.end()) {

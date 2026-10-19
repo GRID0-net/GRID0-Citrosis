@@ -26,7 +26,7 @@ static MemoryInfo Detect() {
     MemoryInfo mem_info{};
 
 #ifdef _WIN32
-    MEMORYSTATUSEX memorystatus;
+    MEMORYSTATUSEX memorystatus{};
     memorystatus.dwLength = sizeof(memorystatus);
     GlobalMemoryStatusEx(&memorystatus);
     mem_info.TotalPhysicalMemory = memorystatus.ullTotalPhys;
@@ -52,10 +52,10 @@ static MemoryInfo Detect() {
     mem_info.TotalPhysicalMemory = physmem;
     mem_info.TotalSwapMemory = swap_total;
 #elif defined(__linux__)
-    struct sysinfo meminfo;
+    struct sysinfo meminfo{};
     sysinfo(&meminfo);
-    mem_info.TotalPhysicalMemory = meminfo.totalram;
-    mem_info.TotalSwapMemory = meminfo.totalswap;
+    mem_info.TotalPhysicalMemory = static_cast<u64>(meminfo.totalram) * meminfo.mem_unit;
+    mem_info.TotalSwapMemory = static_cast<u64>(meminfo.totalswap) * meminfo.mem_unit;
 #else
     mem_info.TotalPhysicalMemory = sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
     mem_info.TotalSwapMemory = 0;

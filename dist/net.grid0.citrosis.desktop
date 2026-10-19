@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Citrosis
+GenericName=Switch Emulator
+Comment=Play your Switch games
+Exec=citrosis %f
+Icon=net.grid0.citrosis
+Terminal=false
+Categories=Game;Emulator;
+MimeType=application/x-nx-nro;application/x-nx-nso;application/x-nx-nsp;application/x-nx-xci;
+StartupWMClass=citrosis

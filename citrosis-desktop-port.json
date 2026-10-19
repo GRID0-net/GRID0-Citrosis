@@ -1,0 +1,7 @@
+{
+  "project": "Citrosis desktop (Lemon core)",
+  "core_base_commit": "a40551c8332cb2f9e84515c9a9f7a731aace9e0e",
+  "qt_frontend_donor_commit": "defddec47ff997824b6f8adb3bece790f6723c24",
+  "grid0_frontend_donor_commit": "f95abb664890463aa21ecc3e1470cfb6da0871b5",
+  "notes": "Restored matching Qt/SDL/room frontends onto the Android-derived core. GRID0 friends and patch updater widgets adapted from the existing desktop branch. No merge of the old desktop emulation core."
+}

@@ -8,7 +8,11 @@
 
 // yuzu data directories
 
+#ifdef __ANDROID__
 #define EDEN_DIR "eden"
+#else
+#define EDEN_DIR "citrosis"
+#endif
 #define PORTABLE_DIR "user"
 
 // Sub-directories contained within a yuzu data directory

@@ -73,3 +73,20 @@ vulkansdk*.exe
 
 # Build-time generated external sources
 externals/generated
+
+# Local credentials, signing material and user profiles
+/.aws/
+/.agents/
+/.codex/
+/user/
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Python build caches
+__pycache__/
+*.py[cod]

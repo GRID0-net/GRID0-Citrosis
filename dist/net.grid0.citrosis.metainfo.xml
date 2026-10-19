@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.grid0.citrosis</id>
+  <name>Citrosis</name>
+  <summary>Switch emulator with GRID0+ integration</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description><p>Citrosis combines the Lemon-based emulation core with desktop controls, per-game settings, and GRID0+ accounts and friends.</p></description>
+  <launchable type="desktop-id">net.grid0.citrosis.desktop</launchable>
+  <url type="homepage">https://github.com/GRID0-net/GRID0-citron</url>
+  <provides><binary>citrosis</binary><binary>citrosis-cli</binary></provides>
+  <content_rating type="oars-1.1"/>
+</component>

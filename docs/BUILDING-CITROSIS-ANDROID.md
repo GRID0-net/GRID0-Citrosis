@@ -1,9 +1,8 @@
 # Building Citrosis Android on the Lemon base
 
-Repository: https://github.com/GRID0-net/GRID0-citron.
-Android branch: `codex/citrosis-android` (Lemon-based).
+Repository: https://github.com/GRID0-net/GRID0-Citrosis.
+Android and desktop builds share this source tree.
 Upstream: Ghael-V/Lemon-Project, pinned at `7fcd6ae60b74e36cce2eb06c0c39492bd636b8ec`.
-The main branch retains the desktop/multiplatform source. Do not merge this entire Android tree into main.
 Provenance: `citrosis-upstream.json`. Lemon history and license notices are retained.
 
 ## Build
@@ -17,7 +16,7 @@ no Git submodules to initialize. A first build needs network access for Gradle/C
 With Android SDK command-line tools already installed:
 
 ```sh
-git clone --branch codex/citrosis-android --single-branch https://github.com/GRID0-net/GRID0-citron.git GRID0-citrosis-android
+git clone https://github.com/GRID0-net/GRID0-Citrosis.git GRID0-citrosis-android
 cd GRID0-citrosis-android
 ./build-citrosis-android.sh --setup --jobs 6
 ```

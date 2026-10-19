@@ -2,7 +2,7 @@
   "project": "Citrosis Android",
   "upstream": "https://github.com/Ghael-V/Lemon-Project",
   "upstream_commit": "7fcd6ae60b74e36cce2eb06c0c39492bd636b8ec",
-  "donor": "/Users/lizzy/GRID0-citron",
+  "donor": "https://github.com/GRID0-net/GRID0-citron",
   "donor_commit": "f105ae2c703c64f641e858de9c9466c256f22cb9",
   "donor_worktree_diff_sha256": "842239f3587091aa7149b9b9803ee96b39ecd8528935d59e6fdbe757da1aa30c",
   "ported": [
@@ -65,6 +65,6 @@
       "validation": "Source review only; first build is the release workflow"
     }
   ],
-  "repository": "https://github.com/GRID0-net/GRID0-citron",
-  "android_branch": "codex/citrosis-android"
+  "repository": "https://github.com/GRID0-net/GRID0-Citrosis",
+  "android_branch": "main"
 }

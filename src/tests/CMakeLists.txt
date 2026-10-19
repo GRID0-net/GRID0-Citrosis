@@ -42,3 +42,17 @@ if (NOT MSVC)
         $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-parameter>
         $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-missing-field-initializers>)
 endif()
+
+if (ENABLE_QT)
+    add_executable(eden_transfer_tests qt/eden_transfer.cpp ../yuzu/eden_transfer.cpp)
+    target_include_directories(eden_transfer_tests PRIVATE ..)
+    target_link_libraries(eden_transfer_tests PRIVATE Qt6::Core)
+    add_test(NAME eden_transfer COMMAND eden_transfer_tests)
+endif()
+
+if (ENABLE_QT AND UNIX)
+    add_executable(startup_process_tests qt/startup_process.cpp ../yuzu/startup_process.cpp)
+    target_include_directories(startup_process_tests PRIVATE ..)
+    target_link_libraries(startup_process_tests PRIVATE Qt6::Core)
+    add_test(NAME startup_process COMMAND startup_process_tests)
+endif()

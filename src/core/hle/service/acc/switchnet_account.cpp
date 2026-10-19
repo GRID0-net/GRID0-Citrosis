@@ -189,6 +189,17 @@ std::unique_ptr<httplib::SSLClient> MakeClient(const std::string& host, int time
         return nullptr;
     }
     client->set_ca_cert_store(store); // owned by the client from here
+    // A raw X509_STORE alone does not mark custom trust in cpp-httplib. On Windows
+    // that triggers an additional Schannel check against the OS roots, which do
+    // not contain the SwitchNet CA. Declare the explicit CA source as well: this
+    // keeps OpenSSL chain and hostname verification and avoids the OS-root check.
+    const auto& bundle = Settings::values.private_server_ca_bundle.GetValue();
+    if (bundle.empty()) {
+        const auto& pem = Service::SSL::SwitchNetLocalCaPem;
+        client->load_ca_cert_store(pem.data(), pem.size());
+    } else {
+        client->set_ca_cert_path(bundle);
+    }
     return client;
 }
 

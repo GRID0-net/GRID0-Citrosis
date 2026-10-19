@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-nx-nro">
+    <comment>Switch homebrew executable</comment><glob pattern="*.nro"/>
+  </mime-type>
+  <mime-type type="application/x-nx-nso">
+    <comment>Switch executable</comment><glob pattern="*.nso"/>
+  </mime-type>
+  <mime-type type="application/x-nx-nsp">
+    <comment>Switch package</comment><glob pattern="*.nsp"/>
+  </mime-type>
+  <mime-type type="application/x-nx-xci">
+    <comment>Switch cartridge image</comment><glob pattern="*.xci"/>
+  </mime-type>
+</mime-info>

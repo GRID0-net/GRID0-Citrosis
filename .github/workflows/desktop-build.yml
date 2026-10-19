@@ -1,0 +1,134 @@
+name: Citrosis desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/citrosis-desktop]
+  pull_request:
+    paths-ignore: ['src/android/**', '**.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Fedora 44 / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container: fedora:44
+    timeout-minutes: 180
+    steps:
+      - name: Install build and runtime dependencies
+        run: >-
+          dnf install -y git clang lld cmake ninja-build gcc-c++ python3
+          qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtcharts-devel qt6-qtsvg-devel
+          SDL3-devel ffmpeg-free-devel openssl-devel zlib-devel libzstd-devel lz4-devel
+          libusb1-devel libdrm-devel glslang nasm yasm
+          alsa-lib-devel pulseaudio-libs-devel libX11-devel libXext-devel libXrandr-devel
+          libXi-devel libXcursor-devel libXinerama-devel wayland-devel libxkbcommon-devel
+          mesa-vulkan-drivers vulkan-loader squashfs-tools binutils qt6-qtwayland
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cpm
+          key: desktop-fedora44-${{ matrix.arch }}-${{ hashFiles('cpmfile.json', 'CMakeModules/**', 'externals/**/CMakeLists.txt') }}
+      - name: Build and test
+        run: bash ./build-citrosis-desktop.sh --jobs 2 --test
+      - name: CLI smoke test
+        run: ./build-desktop/bin/citrosis-cli --help
+      - name: Build AppImage
+        run: |
+          mkdir -p artifacts
+          python3 tools/linux/package-appimage.py --build build-desktop --arch ${{ matrix.arch }} --output artifacts/Citrosis-Linux-${{ matrix.arch }}.AppImage
+          artifacts/Citrosis-Linux-${{ matrix.arch }}.AppImage --appimage-extract-and-run --cli --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Citrosis-AppImage-${{ matrix.arch }}
+          path: |
+            artifacts/*.AppImage
+            artifacts/*.AppImage.sha256
+          if-no-files-found: error
+      - name: Package Fedora binaries
+        run: |
+          mkdir -p artifacts/Citrosis-fedora44-${{ matrix.arch }}/bin
+          cmake --install build-desktop --prefix "$PWD/artifacts/Citrosis-fedora44-${{ matrix.arch }}"
+          cp LICENSE.txt citrosis-desktop-port.json docs/BUILDING-CITROSIS-DESKTOP.md artifacts/Citrosis-fedora44-${{ matrix.arch }}/
+          cp -r LICENSES artifacts/Citrosis-fedora44-${{ matrix.arch }}/
+          mkdir -p artifacts/Citrosis-fedora44-${{ matrix.arch }}/extras
+          cp -r dist/post_shaders dist/post_presets artifacts/Citrosis-fedora44-${{ matrix.arch }}/extras/
+          git rev-parse HEAD > artifacts/Citrosis-fedora44-${{ matrix.arch }}/SOURCE_COMMIT.txt
+          tar -C artifacts -czf artifacts/Citrosis-fedora44-${{ matrix.arch }}.tar.gz Citrosis-fedora44-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Citrosis-fedora44-${{ matrix.arch }}
+          path: artifacts/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86_64 / CLANG64
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            git make patch tar autoconf automake libtool
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-python
+            mingw-w64-clang-x86_64-qt6-base
+            mingw-w64-clang-x86_64-qt6-charts
+            mingw-w64-clang-x86_64-qt6-svg
+            mingw-w64-clang-x86_64-SDL3
+            mingw-w64-clang-x86_64-ffmpeg
+            mingw-w64-clang-x86_64-openssl
+            mingw-w64-clang-x86_64-zlib
+            mingw-w64-clang-x86_64-lz4
+            mingw-w64-clang-x86_64-zstd
+            mingw-w64-clang-x86_64-libusb
+            mingw-w64-clang-x86_64-glslang
+      - uses: actions/cache@v4
+        with:
+          path: .cache/cpm
+          key: desktop-clang64-${{ hashFiles('cpmfile.json', 'CMakeModules/**', 'externals/**/CMakeLists.txt') }}
+      - name: Build and test
+        run: bash ./build-citrosis-desktop.sh --jobs 2 --test
+      - name: Package Windows runtime dependencies
+        run: |
+          cmake -DBIN_DIR="$PWD/build-desktop/bin" -DOUTPUT_DIR="$PWD/artifacts/Citrosis-windows-x86_64" -DMINGW_PREFIX="$(cygpath -m "$MINGW_PREFIX")" -DSOURCE_DIR="$PWD" -P tools/windows/package-citrosis.cmake
+          git rev-parse HEAD > artifacts/Citrosis-windows-x86_64/SOURCE_COMMIT.txt
+      - name: Check packaged CLI without the MSYS2 runtime on PATH
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $process = Start-Process -FilePath ./artifacts/Citrosis-windows-x86_64/citrosis-cli.exe -ArgumentList '--help' -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "Packaged CLI failed: $($process.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Citrosis-windows-x86_64
+          path: artifacts/Citrosis-windows-x86_64/
+          if-no-files-found: error

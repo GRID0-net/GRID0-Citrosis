@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <bit>
+#include <cstdint>
 #include <vector>
 
 #include "video_core/host_shaders/lemon_fg_generate_comp_spv.h"

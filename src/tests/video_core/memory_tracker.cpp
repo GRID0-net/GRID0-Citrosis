@@ -45,9 +45,13 @@ public:
     }
 
     void UpdatePagesCachedBatch(std::span<const std::pair<DAddr, size_t>> ranges, s32 delta) {
-        // TODO: for now assume fine?
+        ++batch_calls;
+        for (const auto& [addr, size] : ranges) {
+            UpdatePagesCachedCount(addr, size, delta);
+        }
     }
 
+    [[nodiscard]] size_t BatchCalls() const noexcept { return batch_calls; }
     [[nodiscard]] size_t UpdateCalls() const noexcept { return update_calls; }
     [[nodiscard]] const std::vector<std::tuple<DAddr, u64, int>>& UpdateCallsList() const noexcept { return calls; }
 
@@ -68,6 +72,7 @@ private:
     ::Common::unordered_map<u64, int> page_table;
     std::vector<std::tuple<DAddr, u64, int>> calls;
     size_t update_calls = 0;
+    size_t batch_calls = 0;
 };
 
 } // Anonymous namespace
@@ -557,20 +562,27 @@ TEST_CASE("MemoryTracker: Cached write downloads") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: FlushCachedWrites batching") {
+TEST_CASE("MemoryTracker: Cached writes preserve gaps and do not double-decrement") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD * 2);
-    memory_track->CachedCpuWrite(c + PAGE, PAGE);
-    memory_track->CachedCpuWrite(c + PAGE * 2, PAGE);
+    const auto calls_before = rasterizer.UpdateCalls();
+    const auto batches_before = rasterizer.BatchCalls();
+    memory_track->CachedCpuWrite(c + PAGE, PAGE * 2);
     memory_track->CachedCpuWrite(c + PAGE * 4, PAGE);
-    REQUIRE(rasterizer.UpdateCalls() == 0);
-    memory_track->FlushCachedWrites();
-    // Now we expect a single batch call (coalesced ranges) to the device memory manager
-    REQUIRE(rasterizer.UpdateCalls() == 1);
+    REQUIRE(rasterizer.BatchCalls() == batches_before + 2);
+    REQUIRE(rasterizer.UpdateCalls() == calls_before + 2);
     const auto& calls = rasterizer.UpdateCallsList();
-    REQUIRE(std::get<0>(calls[0]) == c + PAGE);
-    REQUIRE(std::get<1>(calls[0]) == PAGE * 3);
+    REQUIRE(std::get<0>(calls[calls_before]) == c + PAGE);
+    REQUIRE(std::get<1>(calls[calls_before]) == PAGE * 2);
+    REQUIRE(std::get<0>(calls[calls_before + 1]) == c + PAGE * 4);
+    REQUIRE(std::get<1>(calls[calls_before + 1]) == PAGE);
+    memory_track->FlushCachedWrites();
+    REQUIRE(rasterizer.UpdateCalls() == calls_before + 2);
+    REQUIRE(rasterizer.Count(c + PAGE * 3) == 1);
+    REQUIRE(rasterizer.Count(c + PAGE) == 0);
+    REQUIRE(rasterizer.Count(c + PAGE * 2) == 0);
+    REQUIRE(rasterizer.Count(c + PAGE * 4) == 0);
 }
 
 TEST_CASE("DeviceMemoryManager: UpdatePagesCachedBatch basic") {

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: 'Android source branch, tag or commit (the main branch is the desktop tree)'
+        description: 'Branch, tag or commit to build'
         required: true
-        default: codex/citrosis-android
+        default: main
         type: string
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - name: Check out the separate Android source
+      - name: Check out Citrosis
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref }}
@@ -43,7 +43,7 @@ jobs:
           from pathlib import Path
           marker = Path('citrosis-upstream.json')
           if not marker.is_file() or json.loads(marker.read_text()).get('project') != 'Citrosis Android':
-              raise SystemExit('Select the Lemon-based Citrosis Android branch, not the desktop tree.')
+              raise SystemExit('The selected source does not contain the Citrosis Android build.')
           PY
           mkdir -p build-android
           git rev-parse HEAD > build-android/SOURCE_COMMIT.txt
