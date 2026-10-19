@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "common/thread_worker.h"
+#include "video_core/pipeline_transition_cache.h"
 #include "shader_recompiler/shader_info.h"
 #include "video_core/engines/maxwell_3d.h"
 #include "video_core/renderer_vulkan/fixed_pipeline_state.h"
@@ -134,9 +135,9 @@ public:
         if (key == current_key) {
             return this;
         }
-        const auto it{std::find(transition_keys.begin(), transition_keys.end(), current_key)};
-        return it != transition_keys.end() ? transitions[std::distance(transition_keys.begin(), it)]
-                                           : nullptr;
+        return transitions.Find([&](GraphicsPipeline* pipeline) {
+            return pipeline->key == current_key;
+        });
     }
 
     [[nodiscard]] bool IsBuilt() const noexcept {
@@ -177,8 +178,7 @@ private:
 
     bool (*configure_func)(GraphicsPipeline*, bool){};
 
-    std::vector<GraphicsPipelineCacheKey> transition_keys;
-    std::vector<GraphicsPipeline*> transitions;
+    VideoCommon::PipelineTransitionCache<GraphicsPipeline> transitions;
 
     std::array<vk::ShaderModule, NUM_STAGES> spv_modules;
 

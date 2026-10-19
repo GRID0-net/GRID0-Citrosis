@@ -414,7 +414,10 @@ void Scheduler::InvalidateState() {
 }
 
 void Scheduler::EndPendingOperations() {
-    query_cache->CounterReset(VideoCommon::QueryType::ZPassPixelCount64);
+    // Headless transfer users can submit work before attaching a query cache.
+    if (query_cache) {
+        query_cache->CounterReset(VideoCommon::QueryType::ZPassPixelCount64);
+    }
     EndRenderPass();
 }
 

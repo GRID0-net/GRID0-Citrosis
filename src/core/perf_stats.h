@@ -64,6 +64,7 @@ private:
 
     /// Point when the cumulative counters were reset
     Clock::time_point reset_point = Clock::now();
+    Clock::time_point next_log_point = reset_point + std::chrono::seconds(5);
     /// System time when the cumulative counters were reset
     std::chrono::microseconds reset_point_system_us{0};
 

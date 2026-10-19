@@ -17,6 +17,7 @@
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/settings.h"
+#include "common/logging.h"
 #include "core/perf_stats.h"
 
 using namespace std::chrono_literals;
@@ -116,6 +117,16 @@ PerfStatsResults PerfStats::GetAndResetStats(microseconds current_system_time_us
                      static_cast<double>(system_frames),
         .emulation_speed = system_us_per_second.count() / 1'000'000.0,
     };
+
+    // Infrequent real-game samples make dense-scene regressions visible in logs
+    // without tracing every draw or confusing generated frames with game speed.
+    if (title_id != 0 && system_frames != 0 && now >= next_log_point) {
+        LOG_INFO(Core, "Performance: title={:016X}, game_fps={:.2f}, emulation_speed={:.1f}%, "
+                       "active_frame_ms={:.3f}",
+                 title_id, results.average_game_fps, results.emulation_speed * 100.0,
+                 results.frametime * 1000.0);
+        next_log_point = now + 5s;
+    }
 
     // Reset counters
     reset_point = now;

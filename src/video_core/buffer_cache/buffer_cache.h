@@ -1795,7 +1795,12 @@ bool BufferCache<P>::SynchronizeBuffer(Buffer& buffer, DAddr device_addr, u32 si
     }
     const std::span<BufferCopy> copies_span(upload_copies.data(), upload_copies.size());
     UploadMemory(buffer, total_size_bytes, largest_copy, copies_span);
-    any_buffer_uploaded = true;
+    // Vulkan inline copies already include their transfer->consumer barrier;
+    // reordered copies run in the upload prelude with its submission barrier.
+    // Another PostCopyBarrier here would unnecessarily end the active render pass.
+    if constexpr (!P::UPLOADS_SELF_SYNCHRONIZED) {
+        any_buffer_uploaded = true;
+    }
     return false;
 }
 

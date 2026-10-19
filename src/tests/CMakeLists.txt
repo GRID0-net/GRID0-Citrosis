@@ -19,6 +19,9 @@ add_executable(tests
     core/core_timing.cpp
     core/file_sys/integrity_storage.cpp
     core/internal_network/network.cpp
+    video_core/pipeline_transitions.cpp
+    video_core/vulkan_uploads.cpp
+    video_core/descriptor_table.cpp
     video_core/memory_tracker.cpp
     input_common/calibration_configuration_job.cpp
 )
@@ -57,3 +60,7 @@ if (ENABLE_QT AND UNIX)
     target_link_libraries(startup_process_tests PRIVATE Qt6::Core)
     add_test(NAME startup_process COMMAND startup_process_tests)
 endif()
+
+add_executable(descriptor_table_bench EXCLUDE_FROM_ALL video_core/descriptor_table_bench.cpp)
+target_include_directories(descriptor_table_bench PRIVATE ..)
+target_link_libraries(descriptor_table_bench PRIVATE video_core common ${PLATFORM_LIBRARIES})

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <bit>
 #include <vector>
 
 #include "common/alignment.h"
@@ -22,7 +23,7 @@ template <typename T>
 class DescriptorTable {
 public:
     [[nodiscard]] bool Synchronize(GPUVAddr gpu_addr, u32 limit) noexcept {
-        bool ret = !(current_gpu_addr == gpu_addr && current_limit == limit);
+        const bool ret = descriptors.empty() || current_gpu_addr != gpu_addr || current_limit != limit;
         if (ret) {
             Refresh(gpu_addr, limit);
         }
@@ -33,7 +34,8 @@ public:
         std::ranges::fill(read_descriptors, 0);
     }
 
-    [[nodiscard]] std::pair<T, bool> Read(Tegra::MemoryManager const& gpu_memory, u32 index) noexcept {
+    template <typename Memory>
+    [[nodiscard]] std::pair<T, bool> Read(const Memory& gpu_memory, u32 index) noexcept {
         DEBUG_ASSERT(index <= current_limit);
         const GPUVAddr gpu_addr = current_gpu_addr + index * sizeof(T);
         std::pair<T, bool> result;
@@ -53,15 +55,15 @@ public:
     void Refresh(GPUVAddr gpu_addr, u32 limit) noexcept {
         current_gpu_addr = gpu_addr;
         current_limit = limit;
-        // Mario Brothership reallocates a lot of times, so use aggressive pre-alloc sizes
-        // std::vector<T> by default uses quadratic growth, but that isn't even enough to satisfy brothership
-        const size_t num_descriptors = ((limit + 0x80000) & (~0x7ffff)) + 1;
-        size_t old_size = read_descriptors.size();
-        read_descriptors.resize(Common::DivCeil(num_descriptors, 64U));
-        old_size = (std::min)(old_size, read_descriptors.size());
-        std::fill(read_descriptors.begin(), read_descriptors.begin() + old_size, 0);
-        //
-        descriptors.resize(num_descriptors);
+        // Keep capacity across table switches, but grow geometrically from the
+        // actual inclusive limit rather than allocating 524289 entries per table.
+        const size_t required = static_cast<size_t>(limit) + 1;
+        if (required > descriptors.size()) {
+            const size_t count = std::bit_ceil(std::max(required, size_t{256}));
+            descriptors.resize(count);
+            read_descriptors.resize(Common::DivCeil(count, size_t{64}));
+        }
+        Invalidate();
     }
 
     std::vector<u64> read_descriptors;

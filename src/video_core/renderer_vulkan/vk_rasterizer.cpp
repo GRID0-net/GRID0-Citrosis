@@ -801,32 +801,20 @@ void RasterizerVulkan::DispatchCompute() {
 
     const auto& qmd{kepler_compute->launch_description};
 
-    // Closes the Dispatch -> Draw gap: READ_BARRIER above only protects this dispatch's own
-    // reads from earlier writes. Nothing downstream previously protected a later draw (or
-    // another dispatch) from THIS dispatch's own writes - storage buffers a compute shader
-    // writes (e.g. a GPU-driven instance/culling buffer) could still be mid-write, not yet
-    // visible, when a subsequent vkCmdDraw*/vkCmdDrawIndirect* reads them. Unlike a shader
-    // translation bug this produces no log output at all - just a timing-dependent race,
-    // consistent with reports of geometry (e.g. procedurally placed grass) flickering in and
-    // out at random instead of being consistently wrong. Mirrors the existing broad
-    // READ_BARRIER/WRITE_BARRIER idiom already used around buffer copies in
-    // vk_buffer_cache.cpp rather than inventing a new, narrower one. The destination masks here
-    // and on both READ_BARRIERs include WRITE too: a read-only destination leaves
-    // write-after-write unordered (e.g. a transfer clearing a counter / indirect-args buffer
-    // that the next dispatch then writes, or two dispatches writing the same buffer).
-    static constexpr VkMemoryBarrier WRITE_BARRIER{
+    // Keep both dependency directions: later draws must observe compute writes,
+    // and later writers must wait for compute readers. Record each dispatch and
+    // its barriers together to avoid three scheduler commands per dispatch.
+    static constexpr VkMemoryBarrier READ_BARRIER{
         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
         .pNext = nullptr,
         .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
     };
-    // dst stage must also cover TRANSFER: buffer_cache can serve this dispatch's output to a
-    // later consumer via vkCmdCopyBuffer (e.g. buffer_cache growth/rebase, or a download for
-    // CPU readback) rather than a direct shader read - GRAPHICS_COMPUTE alone left that path
-    // unsynchronized.
-    const auto record_write_barrier = [](vk::CommandBuffer cmdbuf) {
-        cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER, 0, WRITE_BARRIER);
+    static constexpr VkMemoryBarrier WRITE_BARRIER{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
     };
 
     auto indirect_address = kepler_compute->GetIndirectComputeAddress();
@@ -837,30 +825,16 @@ void RasterizerVulkan::DispatchCompute() {
         const auto [buffer, offset] =
             buffer_cache.ObtainBuffer(*indirect_address, 12, sync_info, post_op);
         scheduler.RequestOutsideRenderPassOperationContext();
-        // Mirrors the READ_BARRIER the direct Dispatch() path below already has - this dispatch's
-        // shader can read images/buffers a preceding draw (or transfer) just wrote (e.g. a
-        // GPU-driven post-process pass sampling a render target), and without this nothing
-        // guaranteed those writes were visible yet. Only the direct-dispatch path had this;
-        // DispatchIndirect fell straight through to recording the dispatch with no read barrier
-        // at all.
-        static constexpr VkMemoryBarrier READ_BARRIER{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-            .pNext = nullptr,
-            .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-        };
-        scheduler.Record([](vk::CommandBuffer cmdbuf) {
-            cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER,
-                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, READ_BARRIER);
-        });
         scheduler.Record([pipeline, indirect_buffer = buffer->Handle(),
                           indirect_offset = offset](vk::CommandBuffer cmdbuf) {
-            if (!pipeline->IsBound()) {
-                return;
+            cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, READ_BARRIER);
+            if (pipeline->IsBound()) {
+                cmdbuf.DispatchIndirect(indirect_buffer, indirect_offset);
             }
-            cmdbuf.DispatchIndirect(indirect_buffer, indirect_offset);
+            cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER, 0, WRITE_BARRIER);
         });
-        scheduler.Record(record_write_barrier);
         return;
     }
     const std::array<u32, 3> dim{qmd.grid_dim_x, qmd.grid_dim_y, qmd.grid_dim_z};
@@ -869,21 +843,15 @@ void RasterizerVulkan::DispatchCompute() {
         return;
     }
     scheduler.RequestOutsideRenderPassOperationContext();
-    static constexpr VkMemoryBarrier READ_BARRIER{
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-        .pNext = nullptr,
-        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-    };
-    scheduler.Record([](vk::CommandBuffer cmdbuf) { cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               0, READ_BARRIER); });
     scheduler.Record([pipeline, dim](vk::CommandBuffer cmdbuf) {
-        if (!pipeline->IsBound()) {
-            return;
+        cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, READ_BARRIER);
+        if (pipeline->IsBound()) {
+            cmdbuf.Dispatch(dim[0], dim[1], dim[2]);
         }
-        cmdbuf.Dispatch(dim[0], dim[1], dim[2]);
+        cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER, 0, WRITE_BARRIER);
     });
-    scheduler.Record(record_write_barrier);
 
     // Log compute dispatch
     if (GPU::Logging::IsActive() &&
