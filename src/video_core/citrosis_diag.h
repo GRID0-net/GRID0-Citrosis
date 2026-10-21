@@ -87,14 +87,14 @@ inline size_t ScrubNonFinite(VideoCore::Surface::PixelFormat format, std::span<u
             }
         }
 #endif
+        // Branchless so x86 compilers vectorize it (SSE2/AVX2); same result as a per-value test.
         for (; i < count; ++i) {
             u16 h;
             std::memcpy(&h, data.data() + i * sizeof(u16), sizeof(h));
-            if ((h & 0x7C00) == 0x7C00) {
-                h = 0;
-                std::memcpy(data.data() + i * sizeof(u16), &h, sizeof(h));
-                ++fixed;
-            }
+            const u16 bad = static_cast<u16>((h & 0x7C00) == 0x7C00);
+            fixed += bad;
+            h = static_cast<u16>(h & static_cast<u16>(bad - 1));
+            std::memcpy(data.data() + i * sizeof(u16), &h, sizeof(h));
         }
         break;
     }
@@ -120,11 +120,10 @@ inline size_t ScrubNonFinite(VideoCore::Surface::PixelFormat format, std::span<u
         for (; i < count; ++i) {
             u32 f;
             std::memcpy(&f, data.data() + i * sizeof(u32), sizeof(f));
-            if ((f & 0x7F800000u) == 0x7F800000u) {
-                f = 0;
-                std::memcpy(data.data() + i * sizeof(u32), &f, sizeof(f));
-                ++fixed;
-            }
+            const u32 bad = static_cast<u32>((f & 0x7F800000u) == 0x7F800000u);
+            fixed += bad;
+            f &= bad - 1u;
+            std::memcpy(data.data() + i * sizeof(u32), &f, sizeof(f));
         }
         break;
     }

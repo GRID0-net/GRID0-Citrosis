@@ -28,7 +28,17 @@ bash ./build-citrosis-desktop.sh --jobs 2 --test
 
 other distros need the equivalent development packages. Fedora is the setup used for these builds; the AppImages are meant for running on other distros without having to build everything there.
 
-to make an AppImage on the same architecture youre building on:
+the easy way: `build-release.sh` builds and packages in one go. with no arguments it makes the x86_64 AppImage (natively on an x86_64 PC, or cross-compiled on Fedora ARM64):
+
+```sh
+./build-release.sh                      # artifacts/Citrosis-<date>-<commit>/Citrosis-Linux-x86_64.AppImage
+./build-release.sh linux-aarch64        # ARM64 AppImage (on an ARM64 machine)
+./build-release.sh all --source         # both AppImages, the Windows zip and the source archive
+```
+
+every step's log goes to the output folder's `logs/`, plus `SHA256SUMS` and `BUILD-INFO.json`. `./build-release.sh --help` lists the options.
+
+to make an AppImage by hand on the same architecture youre building on:
 
 ```sh
 mkdir -p artifacts

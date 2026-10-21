@@ -1290,6 +1290,7 @@ void MainWindow::InitializeWidgets() {
 
                 for (auto const& gpu_accuracy_pair : ConfigurationShared::gpu_accuracy_texts_map) {
                     context_menu.addAction(gpu_accuracy_pair.second, [this, gpu_accuracy_pair] {
+                        Settings::ReleaseTitleProfileGpuAccuracy();
                         Settings::values.gpu_accuracy.SetValue(gpu_accuracy_pair.first);
                         UpdateGPUAccuracyButton();
                     });
@@ -3719,7 +3720,10 @@ void MainWindow::OnToggleDockedMode() {
 }
 
 void MainWindow::OnToggleGpuAccuracy() {
-    switch (Settings::values.gpu_accuracy.GetValue()) {
+    // Toggle what is actually in effect; a title profile may be holding Fast for this game.
+    const auto effective = Settings::EffectiveGpuAccuracy();
+    Settings::ReleaseTitleProfileGpuAccuracy();
+    switch (effective) {
     case Settings::GpuAccuracy::Low:
         Settings::values.gpu_accuracy.SetValue(Settings::GpuAccuracy::High);
         break;
@@ -4294,6 +4298,9 @@ void MainWindow::UpdateStatusBar() {
     else
         tas_label->clear();
 
+    // A title performance profile can change the GPU accuracy in effect after boot.
+    UpdateGPUAccuracyButton();
+
     auto results = QtCommon::system->GetAndResetPerfStats();
     auto& shader_notify = QtCommon::system->GPU().ShaderNotify();
     const int shaders_building = shader_notify.ShadersBuilding();
@@ -4336,7 +4343,7 @@ void MainWindow::UpdateStatusBar() {
 }
 
 void MainWindow::UpdateGPUAccuracyButton() {
-    const auto gpu_accuracy = Settings::values.gpu_accuracy.GetValue();
+    const auto gpu_accuracy = Settings::EffectiveGpuAccuracy();
     const auto gpu_accuracy_text =
         ConfigurationShared::gpu_accuracy_texts_map.find(gpu_accuracy)->second;
     gpu_accuracy_button->setText(gpu_accuracy_text.toUpper());

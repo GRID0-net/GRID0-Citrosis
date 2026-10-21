@@ -44,7 +44,8 @@ enum class GPUVendor {
 };
 
 enum class TitleID : std::uint64_t {
-    NinjaGaidenRagebound = 0x0100781020710000ULL
+    NinjaGaidenRagebound = 0x0100781020710000ULL,
+    Splatoon3 = 0x0100C2500FC20000ULL,
 };
 
 struct EnvironmentInfo {
@@ -56,5 +57,9 @@ struct EnvironmentInfo {
 EnvironmentInfo DetectEnvironment(const VideoCore::RendererBase& renderer);
 
 void LoadOverrides(std::uint64_t program_id, const VideoCore::RendererBase& renderer);
+
+/// Applies the Citrosis title performance profile. Must run before the guest process creates its
+/// CPU interfaces and before the GPU starts, so it is called while the application is loaded.
+void ApplyLaunchProfile(std::uint64_t program_id);
 
 } // namespace Core::GameSettings

@@ -8,6 +8,7 @@
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "common/thread.h"
+#include "common/thread_usage.h"
 #include "core/core.h"
 #include "core/frontend/graphics_context.h"
 #include "video_core/control/scheduler.h"
@@ -29,6 +30,7 @@ void ThreadManager::StartThread(VideoCore::RendererBase& renderer, Core::Fronten
     rasterizer = renderer.ReadRasterizer();
     thread = std::jthread([&](std::stop_token stop_token) {
         Common::SetCurrentThreadName("GPU");
+        const Common::ThreadUsage::Registration usage_registration{"GPU"};
         Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
         Common::SetCurrentThreadToPerformanceCores();
         system.RegisterHostThread();

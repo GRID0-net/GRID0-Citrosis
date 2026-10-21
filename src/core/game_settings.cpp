@@ -119,6 +119,36 @@ EnvironmentInfo DetectEnvironment(const VideoCore::RendererBase& renderer) {
     return env;
 }
 
+void ApplyLaunchProfile(std::uint64_t program_id) {
+    Settings::ClearTitleProfile();
+    if (!Settings::values.title_performance_profiles.GetValue()) {
+        return;
+    }
+    auto& profile = Settings::values.title_profile;
+    switch (static_cast<TitleID>(program_id)) {
+    case TitleID::Splatoon3:
+        // Matches are host-CPU bound (Dynarmic guest CPU plus the GPU thread). Accurate GPU
+        // emulation adds synchronous flushes on CPU invalidations, texture readbacks on CPU reads,
+        // fenced semaphore writes, precise occlusion queries and safe DMA reads; Splatoon 3 renders
+        // correctly at Fast. Unsafe CPU accuracy adds Dynarmic's reduced-error reciprocal estimates
+        // and inaccurate NaN handling on top of Auto's FMA unfusing and global monitor bypass.
+        // Each part only applies while the option is left at its global value for this game.
+        profile.fast_gpu_accuracy = Settings::values.gpu_accuracy.UsingGlobal() &&
+                                    Settings::values.gpu_accuracy.GetValue() !=
+                                        Settings::GpuAccuracy::Low;
+        profile.fast_cpu_fp = Settings::values.cpu_accuracy.UsingGlobal() &&
+                              Settings::values.cpu_accuracy.GetValue() ==
+                                  Settings::CpuAccuracy::Auto;
+        break;
+    default:
+        return;
+    }
+    Settings::UpdateGPUAccuracy();
+    LOG_INFO(Core,
+             "Citrosis title performance profile for {:016X}: fast GPU accuracy {}, fast CPU FP {}",
+             program_id, profile.fast_gpu_accuracy, profile.fast_cpu_fp);
+}
+
 void LoadOverrides(std::uint64_t program_id, const VideoCore::RendererBase& renderer) {
     const auto env = DetectEnvironment(renderer);
 

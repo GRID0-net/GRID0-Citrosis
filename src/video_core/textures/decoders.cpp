@@ -77,8 +77,8 @@ size_t SwizzleImpl(std::span<u8> output, std::span<const u8> input, u32 width, u
     const u32 block_height_mask = (1U << block_height) - 1;
     const u32 block_depth_mask = (1U << block_depth) - 1;
     const u32 x_shift = GOB_SIZE_SHIFT + block_height + block_depth;
-    const bool sector_copy =
-        VideoCommon::AndroidPerformance::Enabled() && 16 % BYTES_PER_PIXEL == 0;
+    // Whole-sector copies are an exact reordering of the per-texel loop; use them everywhere.
+    constexpr bool sector_copy = 16 % BYTES_PER_PIXEL == 0;
     static_assert((SWIZZLE_X_BITS & 15U) == 15U);
 
     for (u32 slice = 0; slice < depth; ++slice) {

@@ -152,7 +152,30 @@ bool GetDebugKnobAt(u8 i) {
 }
 
 void UpdateGPUAccuracy() {
-    values.current_gpu_accuracy = values.gpu_accuracy.GetValue();
+    values.current_gpu_accuracy = values.title_profile.fast_gpu_accuracy
+                                      ? GpuAccuracy::Low
+                                      : values.gpu_accuracy.GetValue();
+}
+
+GpuAccuracy EffectiveGpuAccuracy() {
+    return values.title_profile.fast_gpu_accuracy ? GpuAccuracy::Low
+                                                  : values.gpu_accuracy.GetValue();
+}
+
+CpuAccuracy EffectiveCpuAccuracy() {
+    const CpuAccuracy accuracy = values.cpu_accuracy.GetValue();
+    if (accuracy == CpuAccuracy::Auto && values.title_profile.fast_cpu_fp) {
+        return CpuAccuracy::Unsafe;
+    }
+    return accuracy;
+}
+
+void ReleaseTitleProfileGpuAccuracy() {
+    values.title_profile.fast_gpu_accuracy = false;
+}
+
+void ClearTitleProfile() {
+    values.title_profile = {};
 }
 
 bool IsGPULevelHigh() {

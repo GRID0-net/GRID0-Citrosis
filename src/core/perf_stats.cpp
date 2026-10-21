@@ -14,6 +14,7 @@
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
 #include "common/fs/file.h"
+#include "common/thread_usage.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/settings.h"
@@ -86,6 +87,25 @@ void PerfStats::EndSystemFrame() {
 
 void PerfStats::EndGameFrame() {
     game_frames.fetch_add(1, std::memory_order_relaxed);
+
+    // Only the GPU thread presents game frames, so last_game_frame needs no lock.
+    const auto now = Clock::now();
+    if (last_game_frame != Clock::time_point{}) {
+        const auto us = static_cast<u64>(
+            std::chrono::duration_cast<std::chrono::microseconds>(now - last_game_frame).count());
+        u64 previous_max = log_max_game_frame_us.load(std::memory_order_relaxed);
+        while (us > previous_max &&
+               !log_max_game_frame_us.compare_exchange_weak(previous_max, us,
+                                                            std::memory_order_relaxed)) {
+        }
+        if (us > 20'000) {
+            log_game_frames_over_20ms.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (us > 34'000) {
+            log_game_frames_over_34ms.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    last_game_frame = now;
 }
 
 double PerfStats::GetMeanFrametime() const {
@@ -121,10 +141,18 @@ PerfStatsResults PerfStats::GetAndResetStats(microseconds current_system_time_us
     // Infrequent real-game samples make dense-scene regressions visible in logs
     // without tracing every draw or confusing generated frames with game speed.
     if (title_id != 0 && system_frames != 0 && now >= next_log_point) {
+        // Frames over 20 ms miss a 60 FPS vblank; over 34 ms they miss a 30 FPS one too.
+        // Thread CPU usage near 100% names the limiting host thread.
         LOG_INFO(Core, "Performance: title={:016X}, game_fps={:.2f}, emulation_speed={:.1f}%, "
-                       "active_frame_ms={:.3f}",
+                       "active_frame_ms={:.3f}, worst_frame_ms={:.1f}, frames_over_20ms={}, "
+                       "frames_over_34ms={}, threads=[{}]",
                  title_id, results.average_game_fps, results.emulation_speed * 100.0,
-                 results.frametime * 1000.0);
+                 results.frametime * 1000.0,
+                 static_cast<double>(log_max_game_frame_us.exchange(0, std::memory_order_relaxed)) /
+                     1000.0,
+                 log_game_frames_over_20ms.exchange(0, std::memory_order_relaxed),
+                 log_game_frames_over_34ms.exchange(0, std::memory_order_relaxed),
+                 Common::ThreadUsage::SampleReport());
         next_log_point = now + 5s;
     }
 

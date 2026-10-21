@@ -145,6 +145,10 @@ struct Values {
                                               Category::Renderer};
     SwitchableSetting<bool> android_vulkan_performance{linkage, true, "android_vulkan_performance",
                                                        Category::Renderer};
+    /// Citrosis: built-in speed profiles for specific titles (Splatoon 3). They only touch options
+    /// left at the global value for that game; a per-game override always wins.
+    SwitchableSetting<bool> title_performance_profiles{linkage, true, "title_performance_profiles",
+                                                       Category::Core};
 
     // Applet
     SwitchableSetting<AppletMode> cabinet_applet_mode{linkage, AppletMode::LLE, "cabinet_applet_mode",
@@ -659,11 +663,14 @@ struct Values {
                                                         Specialization::Default,
                                                         true,
                                                         true};
+    // Desktop presents from its own thread: otherwise the GPU thread drains the Vulkan worker,
+    // then blocks in vkAcquireNextImageKHR/vkQueuePresentKHR (FIFO, gamescope) every frame
+    // instead of processing the next frame's commands.
     SwitchableSetting<bool> async_presentation{linkage,
 #ifdef __ANDROID__
                                                false,
 #else
-                                               false,
+                                               true,
 #endif
                                                "async_presentation", Category::RendererHacks};
 
@@ -1005,6 +1012,12 @@ struct Values {
     // Per-game overrides
     bool use_squashed_iterated_blend;
 
+    /// Runtime-only state of the active title performance profile (never saved).
+    struct TitleProfileState {
+        bool fast_gpu_accuracy = false; ///< Use Fast GPU accuracy while the title runs.
+        bool fast_cpu_fp = false;       ///< Treat Auto CPU accuracy as Unsafe (fast FP paths).
+    } title_profile{};
+
 };
 
 extern Values values;
@@ -1022,6 +1035,14 @@ bool GetDebugKnobAt(u8 i);
 
 void UpdateGPUAccuracy();
 bool IsGPULevelHigh();
+
+/// CPU accuracy after applying the active title profile (Auto may become Unsafe).
+CpuAccuracy EffectiveCpuAccuracy();
+/// GPU accuracy currently in effect (after the title profile).
+GpuAccuracy EffectiveGpuAccuracy();
+/// The user picked a GPU accuracy by hand while running: stop overriding it.
+void ReleaseTitleProfileGpuAccuracy();
+void ClearTitleProfile();
 
 bool IsDMALevelDefault();
 bool IsDMALevelSafe();
