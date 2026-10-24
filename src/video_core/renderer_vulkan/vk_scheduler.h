@@ -8,6 +8,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -45,6 +46,10 @@ public:
 
     /// Sends the current execution context to the GPU.
     u64 Flush(VkSemaphore signal_semaphore = {}, VkSemaphore wait_semaphore = {});
+
+    /// Like Flush, but marks the submission as an early mid-frame one in the performance stats.
+    /// Used to hand recorded work to the host GPU before the frame's own fence/present flush.
+    u64 FlushEarly();
 
     /// Sends the current execution context to the GPU and waits for it to complete.
     void Finish(VkSemaphore signal_semaphore = {}, VkSemaphore wait_semaphore = {});
@@ -331,6 +336,23 @@ private:
     u32 num_renderpass_images = 0;
     std::array<VkImage, 9> renderpass_images{};
     std::array<VkImageSubresourceRange, 9> renderpass_image_ranges{};
+
+    /// Worker thread: harvests finished submission timestamps into the performance stats.
+    void HarvestTimestamps();
+
+    /// Host GPU timing: a TOP/BOTTOM timestamp pair around every submission's main command
+    /// buffer (worker thread only). Slots are reused in submission order.
+    static constexpr u32 TIMESTAMP_SLOTS = 128;
+    struct PendingTimestamp {
+        u64 tick;
+        u32 slot;
+    };
+    vk::QueryPool timestamp_pool;
+    double timestamp_period_ns = 0.0;
+    u32 next_timestamp_slot = 0;
+    s32 current_timestamp_slot = -1;
+    std::deque<PendingTimestamp> pending_timestamps;
+    bool next_submit_early = false; ///< GPU thread: the next SubmitExecution is an early flush.
 
     std::queue<std::unique_ptr<CommandChunk>> work_queue;
     std::vector<std::unique_ptr<CommandChunk>> chunk_reserve;

@@ -87,6 +87,7 @@ private:
     /// Game-frame pacing for the periodic performance log (written by the GPU thread only).
     Clock::time_point last_game_frame{};
     std::atomic<u64> log_max_game_frame_us{0};
+    std::atomic<u64> log_game_frames{0};
     std::atomic<u32> log_game_frames_over_20ms{0};
     std::atomic<u32> log_game_frames_over_34ms{0};
 };

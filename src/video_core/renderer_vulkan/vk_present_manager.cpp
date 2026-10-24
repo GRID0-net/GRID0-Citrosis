@@ -5,6 +5,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/settings.h"
+#include <chrono>
+
+#include "common/gpu_frame_stats.h"
 #include "common/thread_usage.h"
 #include "common/thread.h"
 #include "core/frontend/emu_window.h"
@@ -171,6 +174,8 @@ PresentManager::~PresentManager() = default;
 
 Frame* PresentManager::GetRenderFrame() {
 
+    const auto wait_start = std::chrono::steady_clock::now();
+
     // Wait for free presentation frames
     std::unique_lock lock{free_mutex};
     free_cv.wait(lock, [this] { return !free_queue.empty(); });
@@ -182,6 +187,11 @@ Frame* PresentManager::GetRenderFrame() {
     // Wait for the presentation to be finished so all frame resources are free
     frame->present_done.Wait();
     frame->present_done.Reset();
+
+    Common::GpuFrameStats::AddPresentFrameWait(static_cast<u64>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() -
+                                                             wait_start)
+            .count()));
 
     return frame;
 }
@@ -330,6 +340,7 @@ void PresentManager::WaitPresent() {
 void PresentManager::PresentThread(std::stop_token token) {
     Common::SetCurrentThreadName("VulkanPresent");
     const Common::ThreadUsage::Registration usage_registration{"VulkanPresent"};
+    Common::GpuFrameStats::SetThreadRole(Common::GpuFrameStats::Role::Present);
     Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
     Common::SetCurrentThreadToPerformanceCores();
     while (!token.stop_requested()) {

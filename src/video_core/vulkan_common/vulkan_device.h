@@ -336,6 +336,17 @@ public:
 
     bool ShouldBoostClocks() const;
 
+    /// Returns true when graphics queues support timestamp queries.
+    bool SupportsGraphicsTimestamps() const {
+        return properties.properties.limits.timestampComputeAndGraphics != VK_FALSE &&
+               properties.properties.limits.timestampPeriod > 0.0f;
+    }
+
+    /// Returns nanoseconds per timestamp tick.
+    float GetTimestampPeriod() const {
+        return properties.properties.limits.timestampPeriod;
+    }
+
     /// Returns uniform buffer alignment requirement.
     VkDeviceSize GetUniformBufferAlignment() const {
         return properties.properties.limits.minUniformBufferOffsetAlignment;

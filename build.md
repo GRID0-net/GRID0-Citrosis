@@ -14,7 +14,7 @@ cd GRID0-Citrosis
 these are the Fedora commands, for both x86_64 and ARM64:
 
 ```sh
-sudo dnf install git clang lld cmake ninja-build gcc-c++ python3 \
+sudo dnf install git clang lld cmake ninja-build gcc-c++ python3 patch \
   qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtcharts-devel qt6-qtsvg-devel \
   SDL3-devel ffmpeg-free-devel openssl-devel zlib-devel libzstd-devel lz4-devel \
   libusb1-devel libdrm-devel glslang nasm yasm \
@@ -46,6 +46,17 @@ python3 tools/linux/package-appimage.py --build build-desktop --arch "$(uname -m
   --output "artifacts/Citrosis-Linux-$(uname -m).AppImage"
 ```
 
+## Linux and Windows packages from a Mac
+
+`build-release-mac.sh` runs `build-release.sh` inside a Fedora 44 container, so the same targets and options work. you need a container runtime running: [OrbStack](https://orbstack.dev), Docker Desktop, Colima or Podman.
+
+```sh
+./build-release-mac.sh all --source       # both AppImages, the Windows zip and the source archive
+./build-release-mac.sh windows-x86_64     # just the Windows zip
+```
+
+on Apple Silicon the container is native ARM64 (no emulation), which is the setup `build-release.sh` cross-builds from. on an Intel Mac, `linux-aarch64` isnt available. the build happens in a container volume because macOS folders arent case-sensitive; results are copied to `artifacts/`. give the container runtime as much memory as you can spare (about 3 GB per job). `--shell` opens a shell in the build container, `--reset` deletes the cached SDKs and build folders.
+
 ## Windows
 
 install [MSYS2](https://www.msys2.org/) and open its **CLANG64** terminal. use that terminal for all of this:
@@ -61,7 +72,7 @@ pacman -S --needed git make patch tar autoconf automake libtool \
   mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-cmake \
   mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-python \
   mingw-w64-clang-x86_64-qt6-base mingw-w64-clang-x86_64-qt6-charts \
-  mingw-w64-clang-x86_64-qt6-svg mingw-w64-clang-x86_64-SDL3 \
+  mingw-w64-clang-x86_64-qt6-svg mingw-w64-clang-x86_64-sdl3 \
   mingw-w64-clang-x86_64-ffmpeg mingw-w64-clang-x86_64-openssl \
   mingw-w64-clang-x86_64-zlib mingw-w64-clang-x86_64-lz4 \
   mingw-w64-clang-x86_64-zstd mingw-w64-clang-x86_64-libusb \

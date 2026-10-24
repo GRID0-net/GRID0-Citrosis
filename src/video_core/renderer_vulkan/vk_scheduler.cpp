@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2019 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <array>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -15,6 +16,7 @@
 
 #include "common/settings.h"
 #include "common/thread.h"
+#include "common/gpu_frame_stats.h"
 #include "common/thread_usage.h"
 #include "video_core/gpu_logging/gpu_logging.h"
 #include "video_core/renderer_vulkan/vk_command_pool.h"
@@ -48,6 +50,22 @@ Scheduler::Scheduler(const Device& device_, StateTracker& state_tracker_)
       master_semaphore{std::make_unique<MasterSemaphore>(device)},
       command_pool{std::make_unique<CommandPool>(*master_semaphore, device)} {
 
+    if (device.SupportsGraphicsTimestamps()) {
+        try {
+            timestamp_pool = device.GetLogical().CreateQueryPool({
+                .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .queryType = VK_QUERY_TYPE_TIMESTAMP,
+                .queryCount = TIMESTAMP_SLOTS * 2,
+                .pipelineStatistics = 0,
+            });
+            timestamp_period_ns = static_cast<double>(device.GetTimestampPeriod());
+        } catch (const vk::Exception&) {
+            timestamp_pool = {};
+        }
+    }
+
     AcquireNewChunk();
     AllocateWorkerCommandBuffer();
     worker_thread = std::jthread([this](std::stop_token token) { WorkerThread(token); });
@@ -62,7 +80,13 @@ u64 Scheduler::Flush(VkSemaphore signal_semaphore, VkSemaphore wait_semaphore) {
     return signal_value;
 }
 
+u64 Scheduler::FlushEarly() {
+    next_submit_early = true;
+    return Flush();
+}
+
 void Scheduler::Finish(VkSemaphore signal_semaphore, VkSemaphore wait_semaphore) {
+    Common::GpuFrameStats::AddDrain();
     // When finishing, we need to wait for the submission to have executed on the device.
     const u64 presubmit_tick = CurrentTick();
     SubmitExecution(signal_semaphore, wait_semaphore);
@@ -271,6 +295,7 @@ bool Scheduler::UpdateDescriptorBufferChunk(u32 descriptor_chunk) {
 void Scheduler::WorkerThread(std::stop_token stop_token) {
     Common::SetCurrentThreadName("VulkanWorker");
     const Common::ThreadUsage::Registration usage_registration{"VulkanWorker"};
+    Common::GpuFrameStats::SetThreadRole(Common::GpuFrameStats::Role::Worker);
     Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
     Common::SetCurrentThreadToPerformanceCores();
 
@@ -332,6 +357,17 @@ void Scheduler::AllocateWorkerCommandBuffer() {
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         .pInheritanceInfo = nullptr,
     });
+    // Start the host GPU timer for this submission. A slot is reused only once its previous
+    // result was harvested; when all are in flight this submission is simply not timed.
+    current_timestamp_slot = -1;
+    if (timestamp_pool && pending_timestamps.size() < TIMESTAMP_SLOTS - 1) {
+        const u32 slot = next_timestamp_slot;
+        next_timestamp_slot = (slot + 1) % TIMESTAMP_SLOTS;
+        current_cmdbuf.ResetQueryPool(*timestamp_pool, slot * 2, 2);
+        current_cmdbuf.WriteTimestamp(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, *timestamp_pool,
+                                      slot * 2);
+        current_timestamp_slot = static_cast<s32>(slot);
+    }
     // The upload buffer waits until something records into it: most submissions have no
     // reordered uploads, and every begin of a reused command buffer resets it, which some drivers
     // (Qualcomm's) pay for by freeing and later re-allocating all of its memory.
@@ -374,6 +410,13 @@ u64 Scheduler::SubmitExecution(VkSemaphore signal_semaphore, VkSemaphore wait_se
                                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, WRITE_BARRIER);
             upload_cmdbuf.End();
         }
+        if (current_timestamp_slot >= 0) {
+            const u32 slot = static_cast<u32>(current_timestamp_slot);
+            cmdbuf.WriteTimestamp(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, *timestamp_pool,
+                                  slot * 2 + 1);
+            pending_timestamps.push_back({signal_value, slot});
+            current_timestamp_slot = -1;
+        }
         cmdbuf.End();
 
         if (on_submit) {
@@ -398,10 +441,39 @@ u64 Scheduler::SubmitExecution(VkSemaphore signal_semaphore, VkSemaphore wait_se
             vk::Check(result);
             break;
         }
+        HarvestTimestamps();
     });
+    Common::GpuFrameStats::AddSubmit(std::exchange(next_submit_early, false));
     chunk->MarkSubmit();
     DispatchWork();
     return signal_value;
+}
+
+void Scheduler::HarvestTimestamps() {
+    if (pending_timestamps.empty()) {
+        return;
+    }
+    master_semaphore->Refresh();
+    while (!pending_timestamps.empty() &&
+           master_semaphore->IsFree(pending_timestamps.front().tick)) {
+        const u32 slot = pending_timestamps.front().slot;
+        std::array<u64, 2> stamps{};
+        const VkResult result = device.GetLogical().GetQueryResults(
+            *timestamp_pool, slot * 2, 2, sizeof(stamps), stamps.data(), sizeof(u64),
+            VK_QUERY_RESULT_64_BIT);
+        if (result == VK_NOT_READY) {
+            break;
+        }
+        pending_timestamps.pop_front();
+        if (result != VK_SUCCESS || stamps[1] < stamps[0]) {
+            continue;
+        }
+        const double ns = static_cast<double>(stamps[1] - stamps[0]) * timestamp_period_ns;
+        // Discard nonsense (wrapped or disjoint counters); a real submission is far below 1 s.
+        if (ns < 1'000'000'000.0) {
+            Common::GpuFrameStats::AddHostGpuTime(static_cast<u64>(ns));
+        }
+    }
 }
 
 void Scheduler::AllocateNewContext() {

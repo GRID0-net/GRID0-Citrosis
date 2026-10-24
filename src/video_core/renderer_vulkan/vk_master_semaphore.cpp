@@ -7,6 +7,9 @@
 #include <thread>
 
 #include <ranges>
+#include <chrono>
+
+#include "common/gpu_frame_stats.h"
 #include "common/settings.h"
 #include "video_core/renderer_vulkan/vk_master_semaphore.h"
 #include "video_core/vulkan_common/vulkan_device.h"
@@ -104,8 +107,13 @@ void MasterSemaphore::Wait(u64 tick) {
     }
 
     // If none of the above is hit, fallback to a regular wait
+    const auto wait_start = std::chrono::steady_clock::now();
     while (!semaphore.Wait(tick)) {
     }
+    Common::GpuFrameStats::AddHostWait(static_cast<u64>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() -
+                                                             wait_start)
+            .count()));
 
     Refresh();
 }

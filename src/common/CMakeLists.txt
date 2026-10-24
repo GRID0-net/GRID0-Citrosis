@@ -126,6 +126,8 @@ add_library(
     thread.h
     thread_usage.cpp
     thread_usage.h
+    gpu_frame_stats.cpp
+    gpu_frame_stats.h
     adpf.cpp
     adpf.h
     thread_queue_list.h

@@ -1016,6 +1016,10 @@ struct Values {
     struct TitleProfileState {
         bool fast_gpu_accuracy = false; ///< Use Fast GPU accuracy while the title runs.
         bool fast_cpu_fp = false;       ///< Treat Auto CPU accuracy as Unsafe (fast FP paths).
+        /// Submit recorded GPU work to the host queue after this many draws instead of waiting
+        /// for the frame's fence/present flush, so the host GPU starts on the frame while the
+        /// GPU thread is still recording it. 0 keeps the platform default.
+        u32 early_submit_draws = 0;
     } title_profile{};
 
 };

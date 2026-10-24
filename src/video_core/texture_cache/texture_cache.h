@@ -676,14 +676,26 @@ void TextureCache<P>::DownloadMemory(DAddr cpu_addr, size_t size) {
     std::ranges::sort(images, [this](ImageId lhs, ImageId rhs) {
         return slot_images[lhs].modification_tick < slot_images[rhs].modification_tick;
     });
+    // Record every download, then drain the queue once: a Finish per image serialized the
+    // host GPU and the GPU thread once per overlapping image.
+    struct PendingDownload {
+        ImageId image_id;
+        decltype(runtime.DownloadStagingBuffer(0)) map;
+        decltype(FixSmallVectorADL(FullDownloadCopies(std::declval<ImageInfo>()))) copies;
+    };
+    boost::container::small_vector<PendingDownload, 16> downloads;
     for (const ImageId image_id : images) {
         Image& image = slot_images[image_id];
         auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
-        const auto copies = FixSmallVectorADL(FullDownloadCopies(image.info));
+        auto copies = FixSmallVectorADL(FullDownloadCopies(image.info));
         image.DownloadMemory(map, copies);
-        runtime.Finish();
-        SwizzleImage(*gpu_memory, image.gpu_addr, image.info, copies, map.mapped_span,
-                     swizzle_data_buffer);
+        downloads.push_back({image_id, std::move(map), std::move(copies)});
+    }
+    runtime.Finish();
+    for (auto& download : downloads) {
+        const Image& image = slot_images[download.image_id];
+        SwizzleImage(*gpu_memory, image.gpu_addr, image.info, download.copies,
+                     download.map.mapped_span, swizzle_data_buffer);
     }
 }
 

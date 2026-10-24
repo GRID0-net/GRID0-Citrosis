@@ -41,7 +41,7 @@ profile, and the closing process cannot overwrite the imported configuration.
 Install the build dependencies:
 
 ```sh
-sudo dnf install git clang lld cmake ninja-build gcc-c++ python3 \
+sudo dnf install git clang lld cmake ninja-build gcc-c++ python3 patch \
   qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtcharts-devel qt6-qtsvg-devel \
   SDL3-devel ffmpeg-free-devel openssl-devel zlib-devel libzstd-devel lz4-devel \
   libusb1-devel libdrm-devel glslang nasm yasm \
@@ -143,7 +143,7 @@ pacman -S --needed git make patch tar autoconf automake libtool \
   mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-ninja \
   mingw-w64-clang-x86_64-python \
   mingw-w64-clang-x86_64-qt6-base mingw-w64-clang-x86_64-qt6-charts \
-  mingw-w64-clang-x86_64-qt6-svg mingw-w64-clang-x86_64-SDL3 \
+  mingw-w64-clang-x86_64-qt6-svg mingw-w64-clang-x86_64-sdl3 \
   mingw-w64-clang-x86_64-ffmpeg mingw-w64-clang-x86_64-openssl \
   mingw-w64-clang-x86_64-zlib mingw-w64-clang-x86_64-lz4 \
   mingw-w64-clang-x86_64-zstd mingw-w64-clang-x86_64-libusb \

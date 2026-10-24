@@ -14,6 +14,7 @@
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
 #include "common/fs/file.h"
+#include "common/gpu_frame_stats.h"
 #include "common/thread_usage.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
@@ -87,6 +88,7 @@ void PerfStats::EndSystemFrame() {
 
 void PerfStats::EndGameFrame() {
     game_frames.fetch_add(1, std::memory_order_relaxed);
+    log_game_frames.fetch_add(1, std::memory_order_relaxed);
 
     // Only the GPU thread presents game frames, so last_game_frame needs no lock.
     const auto now = Clock::now();
@@ -145,14 +147,16 @@ PerfStatsResults PerfStats::GetAndResetStats(microseconds current_system_time_us
         // Thread CPU usage near 100% names the limiting host thread.
         LOG_INFO(Core, "Performance: title={:016X}, game_fps={:.2f}, emulation_speed={:.1f}%, "
                        "active_frame_ms={:.3f}, worst_frame_ms={:.1f}, frames_over_20ms={}, "
-                       "frames_over_34ms={}, threads=[{}]",
+                       "frames_over_34ms={}, threads=[{}] {}",
                  title_id, results.average_game_fps, results.emulation_speed * 100.0,
                  results.frametime * 1000.0,
                  static_cast<double>(log_max_game_frame_us.exchange(0, std::memory_order_relaxed)) /
                      1000.0,
                  log_game_frames_over_20ms.exchange(0, std::memory_order_relaxed),
                  log_game_frames_over_34ms.exchange(0, std::memory_order_relaxed),
-                 Common::ThreadUsage::SampleReport());
+                 Common::ThreadUsage::SampleReport(),
+                 Common::GpuFrameStats::SampleReport(
+                     log_game_frames.exchange(0, std::memory_order_relaxed)));
         next_log_point = now + 5s;
     }
 

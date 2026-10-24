@@ -1227,11 +1227,23 @@ void RasterizerVulkan::FlushWork() {
     if ((++draw_counter & CHECK_MASK) != CHECK_MASK) {
         return;
     }
-    if (draw_counter < DRAWS_TO_DISPATCH) {
+    // A title profile can shorten the submit interval. Without it, a whole desktop frame
+    // (usually < 4096 draws) reaches the host queue only at its fence or present flush, so the
+    // host GPU sits idle while the GPU thread records and then the GPU thread waits for the host
+    // GPU: the two run back to back instead of overlapping. FlushWork runs before the draw
+    // records any state, so splitting the command buffer here is safe (Android always does).
+    const u32 early_submit = Settings::values.title_profile.early_submit_draws;
+    const u32 submit_after =
+        early_submit != 0 ? (std::min)(early_submit, DRAWS_TO_DISPATCH) : DRAWS_TO_DISPATCH;
+    if (draw_counter < submit_after) {
         scheduler.DispatchWork();
         return;
     }
-    scheduler.Flush();
+    if (submit_after < DRAWS_TO_DISPATCH) {
+        scheduler.FlushEarly();
+    } else {
+        scheduler.Flush();
+    }
     draw_counter = 0;
 }
 

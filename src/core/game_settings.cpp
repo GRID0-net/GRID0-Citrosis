@@ -127,8 +127,7 @@ void ApplyLaunchProfile(std::uint64_t program_id) {
     auto& profile = Settings::values.title_profile;
     switch (static_cast<TitleID>(program_id)) {
     case TitleID::Splatoon3:
-        // Matches are host-CPU bound (Dynarmic guest CPU plus the GPU thread). Accurate GPU
-        // emulation adds synchronous flushes on CPU invalidations, texture readbacks on CPU reads,
+        // Accurate GPU emulation adds synchronous flushes on CPU invalidations, texture readbacks on CPU reads,
         // fenced semaphore writes, precise occlusion queries and safe DMA reads; Splatoon 3 renders
         // correctly at Fast. Unsafe CPU accuracy adds Dynarmic's reduced-error reciprocal estimates
         // and inaccurate NaN handling on top of Auto's FMA unfusing and global monitor bypass.
@@ -139,14 +138,20 @@ void ApplyLaunchProfile(std::uint64_t program_id) {
         profile.fast_cpu_fp = Settings::values.cpu_accuracy.UsingGlobal() &&
                               Settings::values.cpu_accuracy.GetValue() ==
                                   Settings::CpuAccuracy::Auto;
+        // Heavy maps (Barnacle & Dime, ...) miss 60 FPS on APUs with no host thread saturated:
+        // the GPU thread records a whole frame before the host GPU sees any of it. Submitting
+        // every 384 draws overlaps recording with host GPU execution.
+        profile.early_submit_draws = 384;
         break;
     default:
         return;
     }
     Settings::UpdateGPUAccuracy();
     LOG_INFO(Core,
-             "Citrosis title performance profile for {:016X}: fast GPU accuracy {}, fast CPU FP {}",
-             program_id, profile.fast_gpu_accuracy, profile.fast_cpu_fp);
+             "Citrosis title performance profile for {:016X}: fast GPU accuracy {}, fast CPU FP {}, "
+             "early submit every {} draws",
+             program_id, profile.fast_gpu_accuracy, profile.fast_cpu_fp,
+             profile.early_submit_draws);
 }
 
 void LoadOverrides(std::uint64_t program_id, const VideoCore::RendererBase& renderer) {

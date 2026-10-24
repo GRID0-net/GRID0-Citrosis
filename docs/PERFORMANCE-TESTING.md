@@ -122,3 +122,60 @@ project's compile commands (x86_64 Linux configuration). The thread-usage sample
 reports ~99% for a busy thread and 0% for a sleeping one. Nothing here measured
 Splatoon 3 FPS: send the new log lines from a match (same spot, dense view) so
 the next pass can target whichever thread is saturated.
+
+# Splatoon 3 heavy-map pass (October 24, 2026)
+
+## What the ROG Ally log showed
+
+Docked, 1x, RADV Phoenix (Z1 Extreme), Fast GPU accuracy, async presentation on.
+Light scenes held 60.00. Heavy maps (Barnacle & Dime) settled at 54-58 FPS with
+emulation speed still 100%, `worst_frame_ms` stuck at 24-27 ms and 5-46 frames
+per 5 s over 20 ms. No host thread was saturated during the drops: GPU 47-56%,
+VulkanWorker 17-20%, CPUCore_0..2 30-47%. Frame times sitting at ~25 ms
+(three 8.33 ms periods of the 120 Hz panel) mean individual frames are just over
+the 16.7 ms budget. Neither the guest CPU nor command processing is the limit, so
+the remaining cost is host GPU time and/or the GPU thread and the host GPU running
+one after the other instead of overlapping.
+
+## Changes
+
+- **Early submission (Splatoon 3 profile).** On desktop, recorded work reached
+  the host queue only every 4096 draws, which in practice means at the frame's
+  fence/present flush: the host GPU idled while the GPU thread recorded a frame,
+  then the GPU thread waited on the host GPU. The Splatoon 3 profile now submits
+  every 384 draws (`TitleProfileState::early_submit_draws`), so the host GPU
+  executes the start of the frame while the rest is still being recorded. The
+  split happens in `FlushWork` before a draw records any state, the same point
+  Android already splits at (512 draws). Turning the profile off restores 4096.
+- **Batched texture downloads.** `TextureCache::DownloadMemory` drained the queue
+  (`Scheduler::Finish`) once per overlapping image; it now records every download
+  and drains once, as `DownloadGpuModifiedImages` already did.
+- **Host GPU and wait diagnostics.** The `Performance` line gains:
+  - `host_gpu=[busy=% gpu_ms/frame= ...]` from a TOP/BOTTOM timestamp pair around
+    every submission (128-slot query ring, harvested on the worker without
+    waiting; a submission is left untimed rather than stalling when all slots are
+    in flight). `submits/frame`, `early` (mid-frame submits) and `drains`
+    (`Scheduler::Finish` calls) are counted too.
+  - `waits_ms/frame=[gpu_thread present_frame present_thread worker other]`: time
+    each role spent blocked on host GPU completion (timeline semaphore waits),
+    and time the GPU thread spent waiting for a free presentation frame.
+
+## Reading the next log
+
+- `gpu_ms/frame` >= ~16 during drops: host GPU throughput is the limit. Next
+  levers are GPU-side (lower resolution scale to confirm, then ASTC: this tree
+  decodes ASTC to uncompressed RGBA8 on GPUs without native ASTC, 4-16x the
+  sampling bandwidth of the original on a bandwidth-bound APU).
+- `gpu_ms/frame` clearly below 16 but `gpu_thread` wait high: serialization;
+  tune `early_submit_draws` (try 256).
+- `present_frame` high: presentation backpressure (gamescope/swapchain image
+  count), not rendering.
+- `drains` in the dozens per frame: a readback path is serializing; find its
+  caller.
+
+## Validation
+
+Changed translation units pass clang `-fsyntax-only` (x86_64 Linux, Vulkan
+1.4 headers, VMA 3.x); remaining diagnostics are the existing fmt-version
+mismatch in `common/logging.h` from the local check environment. No build, run
+or FPS measurement was done.
