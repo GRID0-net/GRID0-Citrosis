@@ -43,6 +43,10 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
+      # The checkout belongs to the runner user, but container steps run as root; without this,
+      # every git call after checkout fails with "detected dubious ownership".
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "*"
       - uses: actions/cache@v4
         with:
           path: .cache/cpm
